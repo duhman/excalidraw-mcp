@@ -73,4 +73,52 @@ describe("SceneService", () => {
     const detached = await service.detachFile("file-scene", attached.fileId);
     expect(detached.removed).toBe(true);
   });
+
+  it("auto-fixes connector bindings and detects text overflow quality warnings", async () => {
+    await service.createScene({ sceneId: "quality-scene" });
+
+    const patch = await service.patchScene("quality-scene", [
+      {
+        op: "addElements",
+        elements: [
+          { id: "n1", type: "rectangle", x: 0, y: 0, width: 180, height: 80 },
+          { id: "n2", type: "rectangle", x: 340, y: 0, width: 180, height: 80 },
+          {
+            id: "t1",
+            type: "text",
+            containerId: "n1",
+            x: 10,
+            y: 20,
+            width: 500,
+            height: 24,
+            fontSize: 20,
+            lineHeight: 1.2,
+            text: "This is a very long label that should wrap inside the container"
+          },
+          {
+            id: "c1",
+            type: "arrow",
+            x: 80,
+            y: 40,
+            points: [
+              [0, 0],
+              [320, 0]
+            ],
+            customData: { fromId: "n1", toId: "n2" }
+          }
+        ]
+      }
+    ] as any);
+
+    const connector = patch.scene.elements.find((element: any) => element.id === "c1");
+    expect(connector?.startBinding?.elementId).toBe("n1");
+    expect(connector?.endBinding?.elementId).toBe("n2");
+
+    const wrappedText = patch.scene.elements.find((element: any) => element.id === "t1");
+    expect(String(wrappedText?.text ?? "")).toContain("\n");
+
+    const validation = await service.validateScene("quality-scene");
+    expect(validation.valid).toBe(true);
+    expect(validation.qualityIssues.some((issue) => issue.code === "TEXT_OVERFLOW")).toBe(false);
+  });
 });

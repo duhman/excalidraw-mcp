@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { SceneEnvelope, SceneMetadata } from "../types/contracts.js";
+import { applyDiagramQuality } from "./diagramQuality.js";
 
 function ensureObject(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -44,19 +45,29 @@ export function normalizeScene(scene: SceneEnvelope): SceneEnvelope {
   const appState = ensureObject(scene.appState);
   const files = ensureObject(scene.files) as Record<string, any>;
   const libraryItems = ensureArray(scene.libraryItems).map((item) => ensureObject(item));
+  const quality = applyDiagramQuality(
+    {
+      ...scene,
+      elements,
+      appState,
+      files,
+      libraryItems
+    },
+    true
+  );
 
   const metadata: SceneMetadata = {
     ...scene.metadata,
     updatedAt: new Date().toISOString(),
-    elementCount: elements.length,
+    elementCount: quality.scene.elements.length,
     fileCount: Object.keys(files).length,
-    engineHints: detectEngineHints(elements),
-    revisionHash: computeRevisionHash(elements, appState, files, libraryItems)
+    engineHints: detectEngineHints(quality.scene.elements),
+    revisionHash: computeRevisionHash(quality.scene.elements, appState, files, libraryItems)
   };
 
   return {
     metadata,
-    elements,
+    elements: quality.scene.elements,
     appState,
     files,
     libraryItems

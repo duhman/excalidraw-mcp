@@ -34,6 +34,7 @@ Responsibilities:
 - `src/domain/sceneStore.ts`
 - `src/domain/sceneService.ts`
 - `src/domain/validators.ts`
+- `src/domain/diagramQuality.ts`
 
 Responsibilities:
 - Scene persistence (`.excalidraw-mcp/scenes/*.excalidraw.json`).
@@ -41,6 +42,9 @@ Responsibilities:
 - Patch operations, element operations, app state updates, files/library updates.
 - Mermaid conversion and derived operations (fit/scroll).
 - Session-local active scene context.
+- Diagram quality guardrails:
+  - connector binding auto-repair
+  - text overflow wrapping in containerized text
 
 ### Engine Layer
 - `src/engines/jsonEngine.ts`

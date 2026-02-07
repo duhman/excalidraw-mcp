@@ -297,7 +297,12 @@ export function registerTools(
       try {
         const resolvedId = await resolveSceneId(sceneService, getSessionId(extra), sceneId);
         const validation = await sceneService.validateScene(resolvedId);
-        return success(validation as any, `Validation ${validation.valid ? "passed" : "failed"} for ${resolvedId}`);
+        const qualityErrors = validation.qualityIssues.filter((issue) => issue.severity === "error").length;
+        const qualityWarnings = validation.qualityIssues.filter((issue) => issue.severity === "warning").length;
+        return success(
+          validation as any,
+          `Validation ${validation.valid ? "passed" : "failed"} for ${resolvedId} (${qualityErrors} quality errors, ${qualityWarnings} warnings)`
+        );
       } catch (error) {
         return failure(error);
       }

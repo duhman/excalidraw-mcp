@@ -16,6 +16,10 @@ All tools return structured output with shape:
 - `scene.validate`: static scene checks.
 - `scene.normalize`: normalize/repair scene payload.
 
+`scene.validate` now includes quality diagnostics:
+- connector binding integrity (`CONNECTOR_UNBOUND`)
+- text overflow in containerized text (`TEXT_OVERFLOW`)
+
 ## Element Tools
 - `elements.create`: append elements.
 - `elements.update`: patch elements by id.
@@ -54,6 +58,15 @@ All tools return structured output with shape:
 ## Session / Health
 - `session.reset`: clear active scene binding for caller session.
 - `health.ping`: service/browser health snapshot.
+
+---
+
+## Built-in Quality Guardrails
+For mutation tools, normalization now auto-applies diagram quality fixes:
+- connectors (`arrow`/`line`) are auto-bound when endpoints or explicit hints indicate source/target nodes
+- overflow text inside containerized text elements is wrapped to fit container width
+
+This runs through the same normalization path used by scene create/patch/update flows.
 
 ---
 

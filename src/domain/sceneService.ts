@@ -6,6 +6,7 @@ import { JsonEngine } from "../engines/jsonEngine.js";
 import type { SceneStore } from "./sceneStore.js";
 import type { ExportOptions, SceneEnvelope, ScenePatchOperation, SceneMetadata } from "../types/contracts.js";
 import { AppError } from "../utils/errors.js";
+import { applyDiagramQuality } from "./diagramQuality.js";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
@@ -110,7 +111,20 @@ export class SceneService {
     });
   }
 
-  async validateScene(sceneId: string): Promise<{ valid: boolean; issues: string[]; revisionHash: string }> {
+  async validateScene(
+    sceneId: string
+  ): Promise<{
+    valid: boolean;
+    issues: string[];
+    qualityIssues: Array<{
+      code: string;
+      severity: string;
+      message: string;
+      elementId: string;
+      details?: Record<string, unknown>;
+    }>;
+    revisionHash: string;
+  }> {
     const scene = await this.store.load(sceneId);
     const issues: string[] = [];
 
@@ -133,10 +147,12 @@ export class SceneService {
         issues.push(`Invalid file data URL: ${fileId}`);
       }
     }
+    const quality = applyDiagramQuality(scene, false);
 
     return {
-      valid: issues.length === 0,
+      valid: issues.length === 0 && quality.issues.filter((issue) => issue.severity === "error").length === 0,
       issues,
+      qualityIssues: quality.issues,
       revisionHash: scene.metadata.revisionHash
     };
   }
