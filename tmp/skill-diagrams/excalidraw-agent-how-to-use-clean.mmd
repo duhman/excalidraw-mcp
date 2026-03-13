@@ -1,0 +1,41 @@
+flowchart LR
+  S[Start] --> Q{What do you need?}
+
+  subgraph SETUP[One-time setup]
+    A1[Place skill in client skills folder]
+    A2[Run bash scripts/check_env.sh]
+    A3[Run bash scripts/self_test.sh]
+    A1 --> A2 --> A3
+  end
+
+  Q --> B1[Embed Excalidraw in app]
+  Q --> B2[Update scene or API behavior]
+  Q --> B3[Convert Mermaid to scene]
+  Q --> B4[Merge libraries]
+  Q --> B5[Collab wiring]
+  Q --> B6[Troubleshoot]
+  Q --> B7[Import to Excalidraw account]
+
+  B1 --> R1[Read install-and-integration reference]
+  B2 --> R2[Read props-and-api reference]
+  B3 --> R3[Read mermaid-conversion reference]
+  B4 --> R4[Read utils-restore-export reference]
+  B5 --> R5[Read collaboration-pattern reference]
+  B6 --> R6[Read troubleshooting reference]
+  B7 --> R7[Read account-linking reference]
+
+  R3 --> C1[Run mermaid_to_scene.mjs]
+  R4 --> C2[Run library_merge.mjs]
+  R7 --> C3[Run import_to_excalidraw.sh headed]
+
+  B1 --> V[Validate result]
+  B2 --> V
+  C1 --> V
+  C2 --> V
+  B5 --> V
+  B6 --> V
+  C3 --> V
+
+  V --> O[Deliver output + checks + risks]
+
+  A3 --> S

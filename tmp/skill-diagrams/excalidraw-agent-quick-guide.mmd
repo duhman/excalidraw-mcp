@@ -1,0 +1,23 @@
+flowchart TB
+  S[Need Excalidraw help] --> A[Setup: check_env + self_test]
+  A --> Q{Task type}
+
+  Q --> B1[Embed in app]
+  Q --> B2[API or scene edits]
+  Q --> B3[Mermaid to scene]
+  Q --> B4[Library merge]
+  Q --> B5[Account import]
+
+  B1 --> R1[Read install reference]
+  B2 --> R2[Read API reference]
+  B3 --> R3[Run mermaid_to_scene]
+  B4 --> R4[Run library_merge]
+  B5 --> R5[Run import_to_excalidraw headed]
+
+  R1 --> V[Validate result]
+  R2 --> V
+  R3 --> V
+  R4 --> V
+  R5 --> V
+
+  V --> O[Deliver output + risks]

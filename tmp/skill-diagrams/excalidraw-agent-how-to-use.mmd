@@ -1,0 +1,40 @@
+flowchart LR
+  A["Start: Need Excalidraw task"] --> B{"Pick task type"}
+
+  B --> I["Install/Embed in React/Next"]
+  B --> P["API/Props behavior"]
+  B --> M["Mermaid -> .excalidraw"]
+  B --> L["Merge .excalidrawlib"]
+  B --> C["Collaboration wiring"]
+  B --> T["Troubleshoot runtime"]
+  B --> U["Import into Excalidraw account"]
+
+  I --> R1["Load: references/excalidraw-install-and-integration.md"]
+  P --> R2["Load: references/excalidraw-props-and-api.md"]
+  M --> R3["Load: references/excalidraw-mermaid-conversion.md"]
+  L --> R4["Load: references/excalidraw-utils-restore-export.md"]
+  C --> R5["Load: references/excalidraw-collaboration-pattern.md"]
+  T --> R6["Load: references/excalidraw-troubleshooting.md"]
+  U --> R7["Load: references/excalidraw-account-linking.md"]
+
+  R3 --> S1["Run: scripts/mermaid_to_scene.mjs"]
+  R4 --> S2["Run: scripts/library_merge.mjs"]
+  U --> S3["Run: scripts/import_to_excalidraw.sh (headed)"]
+
+  S1 --> V["Validate: scripts/scene_lint.mjs"]
+  S2 --> V
+  I --> V
+  P --> V
+  C --> V
+  T --> V
+  S3 --> V
+
+  V --> O["Output: verified scene/library + report"]
+
+  subgraph Setup["Skill setup (one-time)"]
+    Z1["Skill root: ~/.codex/skills/excalidraw-agent"]
+    Z2["Check env: bash scripts/check_env.sh"]
+    Z3["Node + pnpm + Excalidraw packages available"]
+  end
+
+  Z1 --> Z2 --> Z3 --> A
