@@ -505,10 +505,36 @@ export class SceneService {
 
       const sourceBounds = getElementBounds(source);
       const targetBounds = getElementBounds(target);
-      const startX = sourceBounds.cx;
-      const startY = sourceBounds.cy;
-      const endX = targetBounds.cx;
-      const endY = targetBounds.cy;
+      const dx = targetBounds.cx - sourceBounds.cx;
+      const dy = targetBounds.cy - sourceBounds.cy;
+      const horizontalDominant = Math.abs(dx) >= Math.abs(dy);
+
+      const startX = horizontalDominant
+        ? dx >= 0
+          ? sourceBounds.x + sourceBounds.width
+          : sourceBounds.x
+        : sourceBounds.cx;
+      const startY = horizontalDominant
+        ? sourceBounds.cy
+        : dy >= 0
+          ? sourceBounds.y + sourceBounds.height
+          : sourceBounds.y;
+      const endX = horizontalDominant
+        ? dx >= 0
+          ? targetBounds.x
+          : targetBounds.x + targetBounds.width
+        : targetBounds.cx;
+      const endY = horizontalDominant
+        ? targetBounds.cy
+        : dy >= 0
+          ? targetBounds.y
+          : targetBounds.y + targetBounds.height;
+      const startBinding = horizontalDominant
+        ? { elementId: source.id, fixedPoint: dx >= 0 ? [1, 0.5] : [0, 0.5] }
+        : { elementId: source.id, fixedPoint: dy >= 0 ? [0.5, 1] : [0.5, 0] };
+      const endBinding = horizontalDominant
+        ? { elementId: target.id, fixedPoint: dx >= 0 ? [0, 0.5] : [1, 0.5] }
+        : { elementId: target.id, fixedPoint: dy >= 0 ? [0.5, 0] : [0.5, 1] };
       const connectorId = uuidv4();
       const labelId = input.label ? uuidv4() : undefined;
       const connector: any = {
@@ -519,8 +545,8 @@ export class SceneService {
         width: endX - startX,
         height: endY - startY,
         points: [[0, 0], [endX - startX, endY - startY]],
-        startBinding: { elementId: source.id, fixedPoint: [1, 0.5] },
-        endBinding: { elementId: target.id, fixedPoint: [0, 0.5] },
+        startBinding,
+        endBinding,
         endArrowhead: input.connectorType === "line" ? null : input.endArrowhead ?? "arrow",
         strokeStyle: input.strokeStyle ?? "solid",
         strokeColor: input.strokeColor ?? "#1e1e1e"

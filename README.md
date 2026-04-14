@@ -118,6 +118,28 @@ npm test
 npm run build
 ```
 
+## Demo: programmatic sales-process board
+Generate a realistic Excalidraw process map via the MCP server itself:
+
+```bash
+node scripts/demo-sales-process-board.mjs
+```
+
+This produces:
+- `tmp/generated/sales-process-overview/sales-process-overview.excalidraw`
+- `tmp/generated/sales-process-overview/sales-process-overview.png`
+- `tmp/generated/sales-process-overview/summary.json`
+
+The script exercises the MCP workflow end-to-end with:
+- `scene.import_json`
+- `elements.create`
+- `elements.arrange`
+- `connectors.create`
+- `view.fit_to_content`
+- `scene.validate`
+- `export.json`
+- `export.png`
+
 ## Notes
 - Account linking is implemented via authenticated UI automation, not private Excalidraw API tokens.
 - For Playwright browser setup issues:

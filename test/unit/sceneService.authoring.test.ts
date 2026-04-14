@@ -109,6 +109,10 @@ describe("SceneService advanced authoring", () => {
     expect(connector).toBeTruthy();
     expect(connector.startBinding.elementId).toBe("left");
     expect(connector.endBinding.elementId).toBe("right");
+    expect(connector.x).toBe(160);
+    expect(connector.y).toBe(40);
+    expect(connector.points[0]).toEqual([0, 0]);
+    expect(connector.points[1][0]).toBeGreaterThan(0);
     expect(result.scene.elements.some((element: any) => element.type === "text" && element.containerId === connector.id)).toBe(true);
   });
 });

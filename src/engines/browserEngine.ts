@@ -150,13 +150,21 @@ export class BrowserEngine {
     }
 
     if (this.context) {
-      await this.context.close();
+      try {
+        await this.context.close();
+      } catch {
+        // ignore disposal races during shutdown
+      }
       this.context = null;
       this.page = null;
     }
 
     if (this.browser) {
-      await this.browser.close();
+      try {
+        await this.browser.close();
+      } catch {
+        // ignore disposal races during shutdown
+      }
       this.browser = null;
     }
   }
