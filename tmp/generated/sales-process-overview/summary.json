@@ -1,0 +1,26 @@
+{
+  "sceneId": "sales-process-overview",
+  "outputDir": "/Users/minimac/projects/excalidraw-mcp/tmp/generated/sales-process-overview",
+  "excalidrawPath": "/Users/minimac/projects/excalidraw-mcp/tmp/generated/sales-process-overview/sales-process-overview.excalidraw",
+  "pngPath": "/Users/minimac/projects/excalidraw-mcp/tmp/generated/sales-process-overview/sales-process-overview.png",
+  "pngError": null,
+  "validation": {
+    "ok": true,
+    "data": {
+      "valid": true,
+      "issues": [],
+      "qualityIssues": [],
+      "revisionHash": "4cd5dc243755e676e86c85b45ee3de6c8d5a67cc75ecd7c35612de0dbb68b9f9"
+    }
+  },
+  "toolsUsed": [
+    "scene.import_json",
+    "elements.create",
+    "elements.arrange",
+    "connectors.create",
+    "view.fit_to_content",
+    "scene.validate",
+    "export.json",
+    "export.png"
+  ]
+}
