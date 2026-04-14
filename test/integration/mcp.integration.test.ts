@@ -35,6 +35,9 @@ describe("MCP in-memory integration", () => {
 
     const tools = await client.listTools();
     expect(tools.tools.some((tool) => tool.name === "scene.create")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "scene.import_json")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "elements.arrange")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "connectors.create")).toBe(true);
     expect(tools.tools.some((tool) => tool.name === "export.json")).toBe(true);
     expect(tools.tools.some((tool) => tool.name === "account.login_session")).toBe(true);
     expect(tools.tools.some((tool) => tool.name === "account.import_scene")).toBe(true);
@@ -49,6 +52,23 @@ describe("MCP in-memory integration", () => {
     });
     expect(created.isError).toBeFalsy();
 
+    const imported = await client.callTool({
+      name: "scene.import_json",
+      arguments: {
+        sceneId: "it-imported",
+        payload: {
+          type: "excalidraw",
+          version: 2,
+          source: "https://excalidraw.com",
+          elements: [{ id: "imported-node", type: "rectangle", x: 10, y: 20, width: 140, height: 60 }],
+          appState: { viewBackgroundColor: "#ffffff" },
+          files: {},
+          libraryItems: []
+        }
+      }
+    });
+    expect(imported.isError).toBeFalsy();
+
     const opened = await client.callTool({
       name: "scene.open",
       arguments: {
@@ -60,10 +80,35 @@ describe("MCP in-memory integration", () => {
     const elementsCreated = await client.callTool({
       name: "elements.create",
       arguments: {
-        elements: [{ type: "ellipse", x: 50, y: 50, width: 80, height: 80 }]
+        elements: [
+          { id: "left", type: "ellipse", x: 50, y: 50, width: 80, height: 80 },
+          { id: "right", type: "rectangle", x: 260, y: 220, width: 120, height: 80 }
+        ]
       }
     });
     expect(elementsCreated.isError).toBeFalsy();
+
+    const arranged = await client.callTool({
+      name: "elements.arrange",
+      arguments: {
+        elementIds: ["left", "right"],
+        mode: "stack",
+        axis: "y",
+        gap: 24,
+        anchor: "center"
+      }
+    });
+    expect(arranged.isError).toBeFalsy();
+
+    const connected = await client.callTool({
+      name: "connectors.create",
+      arguments: {
+        sourceElementId: "left",
+        targetElementId: "right",
+        label: "flows"
+      }
+    });
+    expect(connected.isError).toBeFalsy();
 
     const exported = await client.callTool({
       name: "export.json",

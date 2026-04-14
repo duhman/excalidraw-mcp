@@ -32,6 +32,28 @@ function createSceneMetadata(sceneId: string, name: string): SceneMetadata {
   };
 }
 
+function getElementBounds(element: any): { x: number; y: number; width: number; height: number; cx: number; cy: number } {
+  const x = Number(element?.x ?? 0);
+  const y = Number(element?.y ?? 0);
+  const width = Number(element?.width ?? 0);
+  const height = Number(element?.height ?? 0);
+  return { x, y, width, height, cx: x + width / 2, cy: y + height / 2 };
+}
+
+function makeDataUrlHashSafe(dataUrl: string): string {
+  return String(dataUrl ?? "").trim();
+}
+
+function coerceLibraryItems(payload: any): any[] {
+  if (Array.isArray(payload?.libraryItems)) {
+    return payload.libraryItems;
+  }
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  return [];
+}
+
 export class SceneService {
   private readonly store: SceneStore;
   private readonly jsonEngine: JsonEngine;
@@ -292,6 +314,246 @@ export class SceneService {
     ]);
 
     return result.scene.libraryItems;
+  }
+
+  async importSceneFromJson(input: {
+    sceneId?: string;
+    payload: any;
+    merge?: boolean;
+    name?: string;
+    openInSessionId?: string;
+  }): Promise<{ scene: SceneEnvelope; createdScene: boolean }> {
+    const payload = input.payload ?? {};
+    const elements = Array.isArray(payload.elements) ? payload.elements : [];
+    const appState = typeof payload.appState === "object" && payload.appState ? payload.appState : {};
+    const files = typeof payload.files === "object" && payload.files ? payload.files : {};
+    const libraryItems = coerceLibraryItems(payload);
+
+    if (!input.sceneId) {
+      const scene = this.jsonEngine.normalize({
+        metadata: createSceneMetadata(uuidv4(), input.name ?? payload.name ?? "Imported Scene"),
+        elements,
+        appState,
+        files,
+        libraryItems
+      });
+      await this.store.save(scene);
+      if (input.openInSessionId) {
+        this.sessionActiveScene.set(input.openInSessionId, scene.metadata.sceneId);
+      }
+      return { scene, createdScene: true };
+    }
+
+    if (!(await this.store.exists(input.sceneId))) {
+      const scene = this.jsonEngine.normalize({
+        metadata: createSceneMetadata(input.sceneId, input.name ?? payload.name ?? `Scene ${input.sceneId.slice(0, 8)}`),
+        elements,
+        appState,
+        files,
+        libraryItems
+      });
+      await this.store.save(scene);
+      if (input.openInSessionId) {
+        this.sessionActiveScene.set(input.openInSessionId, input.sceneId);
+      }
+      return { scene, createdScene: true };
+    }
+
+    return this.withSceneLock(input.sceneId, async () => {
+      const existing = await this.store.load(input.sceneId!);
+      const scene = this.jsonEngine.normalize({
+        ...existing,
+        metadata: {
+          ...existing.metadata,
+          name: input.name ?? existing.metadata.name
+        },
+        elements: input.merge === false ? elements : [...existing.elements, ...elements],
+        appState: input.merge === false ? appState : { ...existing.appState, ...appState },
+        files: input.merge === false ? files : { ...existing.files, ...files },
+        libraryItems: input.merge === false ? libraryItems : [...existing.libraryItems, ...libraryItems]
+      });
+      await this.store.save(scene);
+      if (input.openInSessionId) {
+        this.sessionActiveScene.set(input.openInSessionId, input.sceneId!);
+      }
+      return { scene, createdScene: false };
+    });
+  }
+
+  async importLibraryFromJson(input: { sceneId: string; payload: any; merge?: boolean }): Promise<any[]> {
+    const libraryItems = coerceLibraryItems(input.payload);
+    return this.updateLibrary(input.sceneId, libraryItems, input.merge ?? true);
+  }
+
+  async arrangeElements(
+    sceneId: string,
+    input: {
+      elementIds: string[];
+      mode: "align" | "distribute" | "stack" | "grid";
+      axis?: "x" | "y" | "both";
+      gap?: number;
+      anchor?: "min" | "center" | "max";
+      columns?: number;
+    }
+  ): Promise<{ scene: SceneEnvelope; changedElementIds: string[] }> {
+    const axis = input.axis ?? "x";
+    const gap = Number(input.gap ?? 24);
+    const anchor = input.anchor ?? "min";
+    return this.withSceneLock(sceneId, async () => {
+      const scene = await this.store.load(sceneId);
+      const selectedIds = new Set(input.elementIds);
+      const elements = scene.elements.map((element) => ({ ...element }));
+      const selected = elements.filter((element) => selectedIds.has(element.id) && !element.isDeleted);
+      if (selected.length === 0) {
+        throw new AppError("BAD_REQUEST", "No matching elements to arrange", 400, { elementIds: input.elementIds });
+      }
+
+      const bounds = selected.map((element) => ({ element, ...getElementBounds(element) }));
+      const minX = Math.min(...bounds.map((item) => item.x));
+      const minY = Math.min(...bounds.map((item) => item.y));
+      const maxX = Math.max(...bounds.map((item) => item.x + item.width));
+      const maxY = Math.max(...bounds.map((item) => item.y + item.height));
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      const setAlignedCrossAxis = (element: any, itemBounds: ReturnType<typeof getElementBounds>) => {
+        if (axis === "y") {
+          if (anchor === "center") element.x = centerX - itemBounds.width / 2;
+          else if (anchor === "max") element.x = maxX - itemBounds.width;
+          else element.x = minX;
+        } else {
+          if (anchor === "center") element.y = centerY - itemBounds.height / 2;
+          else if (anchor === "max") element.y = maxY - itemBounds.height;
+          else element.y = minY;
+        }
+      };
+
+      if (input.mode === "stack") {
+        const ordered = [...bounds].sort((a, b) => (axis === "y" ? a.y - b.y : a.x - b.x));
+        let cursor = axis === "y" ? minY : minX;
+        for (const item of ordered) {
+          if (axis === "y") item.element.y = cursor;
+          else item.element.x = cursor;
+          setAlignedCrossAxis(item.element, item);
+          cursor += (axis === "y" ? item.height : item.width) + gap;
+        }
+      } else if (input.mode === "align") {
+        for (const item of bounds) {
+          if (axis === "x" || axis === "both") {
+            if (anchor === "center") item.element.x = centerX - item.width / 2;
+            else if (anchor === "max") item.element.x = maxX - item.width;
+            else item.element.x = minX;
+          }
+          if (axis === "y" || axis === "both") {
+            if (anchor === "center") item.element.y = centerY - item.height / 2;
+            else if (anchor === "max") item.element.y = maxY - item.height;
+            else item.element.y = minY;
+          }
+        }
+      } else if (input.mode === "distribute") {
+        const ordered = [...bounds].sort((a, b) => (axis === "y" ? a.y - b.y : a.x - b.x));
+        const start = axis === "y" ? minY : minX;
+        const end = axis === "y" ? maxY : maxX;
+        const totalSize = ordered.reduce((sum, item) => sum + (axis === "y" ? item.height : item.width), 0);
+        const free = Math.max(0, end - start - totalSize);
+        const stepGap = ordered.length > 1 ? free / (ordered.length - 1) : 0;
+        let cursor = start;
+        for (const item of ordered) {
+          if (axis === "y") item.element.y = cursor;
+          else item.element.x = cursor;
+          setAlignedCrossAxis(item.element, item);
+          cursor += (axis === "y" ? item.height : item.width) + stepGap;
+        }
+      } else if (input.mode === "grid") {
+        const columns = Math.max(1, Number(input.columns ?? Math.ceil(Math.sqrt(selected.length))));
+        const maxWidth = Math.max(...bounds.map((item) => item.width));
+        const maxHeight = Math.max(...bounds.map((item) => item.height));
+        const ordered = [...bounds].sort((a, b) => a.y - b.y || a.x - b.x);
+        ordered.forEach((item, index) => {
+          const col = index % columns;
+          const row = Math.floor(index / columns);
+          item.element.x = minX + col * (maxWidth + gap);
+          item.element.y = minY + row * (maxHeight + gap);
+        });
+      }
+
+      const nextScene = this.jsonEngine.normalize({ ...scene, elements });
+      await this.store.save(nextScene);
+      return { scene: nextScene, changedElementIds: [...selectedIds].sort() };
+    });
+  }
+
+  async createConnector(
+    sceneId: string,
+    input: {
+      sourceElementId: string;
+      targetElementId: string;
+      label?: string;
+      connectorType?: "arrow" | "line";
+      endArrowhead?: "arrow" | "triangle" | "bar" | "dot" | null;
+      strokeStyle?: "solid" | "dashed" | "dotted";
+      strokeColor?: string;
+    }
+  ): Promise<{ scene: SceneEnvelope; connectorId: string; labelId?: string }> {
+    return this.withSceneLock(sceneId, async () => {
+      const scene = await this.store.load(sceneId);
+      const source = scene.elements.find((element) => element.id === input.sourceElementId && !element.isDeleted);
+      const target = scene.elements.find((element) => element.id === input.targetElementId && !element.isDeleted);
+      if (!source || !target) {
+        throw new AppError("NOT_FOUND", "Source or target element not found", 404, input);
+      }
+
+      const sourceBounds = getElementBounds(source);
+      const targetBounds = getElementBounds(target);
+      const startX = sourceBounds.cx;
+      const startY = sourceBounds.cy;
+      const endX = targetBounds.cx;
+      const endY = targetBounds.cy;
+      const connectorId = uuidv4();
+      const labelId = input.label ? uuidv4() : undefined;
+      const connector: any = {
+        id: connectorId,
+        type: input.connectorType ?? "arrow",
+        x: startX,
+        y: startY,
+        width: endX - startX,
+        height: endY - startY,
+        points: [[0, 0], [endX - startX, endY - startY]],
+        startBinding: { elementId: source.id, fixedPoint: [1, 0.5] },
+        endBinding: { elementId: target.id, fixedPoint: [0, 0.5] },
+        endArrowhead: input.connectorType === "line" ? null : input.endArrowhead ?? "arrow",
+        strokeStyle: input.strokeStyle ?? "solid",
+        strokeColor: input.strokeColor ?? "#1e1e1e"
+      };
+      if (labelId) {
+        connector.boundElements = [{ id: labelId, type: "text" }];
+      }
+
+      const additions = [connector];
+      if (labelId) {
+        additions.push({
+          id: labelId,
+          type: "text",
+          x: startX + (endX - startX) / 2 - 30,
+          y: startY + (endY - startY) / 2 - 12,
+          width: 60,
+          height: 24,
+          text: input.label,
+          originalText: input.label,
+          containerId: connectorId,
+          fontSize: 16,
+          fontFamily: 1,
+          textAlign: "center",
+          verticalAlign: "middle",
+          autoResize: true,
+          strokeColor: "#1e1e1e"
+        });
+      }
+
+      const result = this.jsonEngine.applyPatch(scene, [{ op: "addElements", elements: additions }]);
+      await this.store.save(result.scene);
+      return { scene: result.scene, connectorId, labelId };
+    });
   }
 
   async diagramFromMermaid(input: {

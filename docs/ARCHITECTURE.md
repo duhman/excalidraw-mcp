@@ -38,8 +38,9 @@ Responsibilities:
 
 Responsibilities:
 - Scene persistence (`.excalidraw-mcp/scenes/*.excalidraw.json`).
-- Scene lifecycle (create/open/get/save/close/list).
-- Patch operations, element operations, app state updates, files/library updates.
+- Scene lifecycle (create/open/get/save/close/list/import).
+- Patch operations, element operations, connector creation, app state updates, files/library updates.
+- AI-friendly layout transforms (`elements.arrange`) for align/distribute/stack/grid workflows.
 - Mermaid conversion and derived operations (fit/scroll).
 - Session-local active scene context.
 - Diagram quality guardrails:

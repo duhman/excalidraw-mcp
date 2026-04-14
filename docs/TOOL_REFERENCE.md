@@ -7,6 +7,7 @@ All tools return structured output with shape:
 
 ## Scene Tools
 - `scene.create`: create scene file.
+- `scene.import_json`: import an Excalidraw scene payload into managed workspace storage.
 - `scene.open`: set active scene for current MCP session.
 - `scene.list`: list scene metadata.
 - `scene.get`: get full scene payload.
@@ -25,6 +26,10 @@ All tools return structured output with shape:
 - `elements.update`: patch elements by id.
 - `elements.delete`: soft/hard delete by ids.
 - `elements.list`: list/filter elements.
+- `elements.arrange`: deterministic align/distribute/stack/grid transforms for AI-friendly layout cleanup.
+
+## Connector Tools
+- `connectors.create`: create a bound connector between two nodes with optional label text.
 
 ## App State Tools
 - `appstate.get`: fetch app state.
@@ -37,6 +42,7 @@ All tools return structured output with shape:
 ## Library Tools
 - `library.get`: read scene library items.
 - `library.update`: merge/replace library items.
+- `library.import_json`: import `.excalidrawlib` payloads into scene library state.
 
 ## Diagram/View Tools
 - `diagram.from_mermaid`: convert Mermaid and merge/create scene.

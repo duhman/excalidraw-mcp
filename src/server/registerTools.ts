@@ -155,6 +155,39 @@ export function registerTools(
   );
 
   server.registerTool(
+    "scene.import_json",
+    {
+      description: "Import an Excalidraw scene JSON payload into managed workspace storage",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+        payload: z.record(z.string(), z.unknown()),
+        merge: z.boolean().optional(),
+        name: z.string().min(1).max(256).optional(),
+        openAfterImport: z.boolean().optional()
+      },
+      outputSchema: standardOutputSchema,
+      annotations: mutatingAnnotations
+    },
+    async ({ sceneId, payload, merge, name, openAfterImport }, extra) => {
+      try {
+        const result = await sceneService.importSceneFromJson({
+          sceneId,
+          payload,
+          merge,
+          name,
+          openInSessionId: openAfterImport === false ? undefined : getSessionId(extra)
+        });
+        return success(
+          { scene: result.scene, createdScene: result.createdScene },
+          `${result.createdScene ? "Imported new" : "Updated"} scene ${result.scene.metadata.sceneId} from JSON`
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "scene.open",
     {
       description: "Open a scene for the current MCP session",
@@ -451,6 +484,82 @@ export function registerTools(
   );
 
   server.registerTool(
+    "elements.arrange",
+    {
+      description: "Arrange a set of elements using deterministic align/distribute/stack/grid layout helpers",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+        elementIds: z.array(z.string().min(1)).min(1),
+        mode: z.enum(["align", "distribute", "stack", "grid"]),
+        axis: z.enum(["x", "y", "both"]).optional(),
+        gap: z.number().optional(),
+        anchor: z.enum(["min", "center", "max"]).optional(),
+        columns: z.number().int().min(1).max(100).optional()
+      },
+      outputSchema: standardOutputSchema,
+      annotations: mutatingAnnotations
+    },
+    async ({ sceneId, elementIds, mode, axis, gap, anchor, columns }, extra) => {
+      try {
+        const resolvedId = await resolveSceneId(sceneService, getSessionId(extra), sceneId);
+        const result = await sceneService.arrangeElements(resolvedId, {
+          elementIds,
+          mode,
+          axis,
+          gap,
+          anchor,
+          columns
+        });
+        return success(
+          { scene: result.scene, changedElementIds: result.changedElementIds },
+          `Arranged ${result.changedElementIds.length} elements in ${resolvedId}`
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "connectors.create",
+    {
+      description: "Create a connector between two existing elements with optional label text",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+        sourceElementId: z.string().min(1),
+        targetElementId: z.string().min(1),
+        label: z.string().optional(),
+        connectorType: z.enum(["arrow", "line"]).optional(),
+        endArrowhead: z.enum(["arrow", "triangle", "bar", "dot"]).nullable().optional(),
+        strokeStyle: z.enum(["solid", "dashed", "dotted"]).optional(),
+        strokeColor: z.string().optional()
+      },
+      outputSchema: standardOutputSchema,
+      annotations: mutatingAnnotations
+    },
+    async ({ sceneId, sourceElementId, targetElementId, label, connectorType, endArrowhead, strokeStyle, strokeColor }, extra) => {
+      try {
+        const resolvedId = await resolveSceneId(sceneService, getSessionId(extra), sceneId);
+        const result = await sceneService.createConnector(resolvedId, {
+          sourceElementId,
+          targetElementId,
+          label,
+          connectorType,
+          endArrowhead,
+          strokeStyle,
+          strokeColor
+        });
+        return success(
+          { scene: result.scene, connectorId: result.connectorId, labelId: result.labelId },
+          `Created connector ${result.connectorId} in ${resolvedId}`
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "appstate.get",
     {
       description: "Get current app state for a scene",
@@ -582,6 +691,29 @@ export function registerTools(
         const resolvedId = await resolveSceneId(sceneService, getSessionId(extra), sceneId);
         const updated = await sceneService.updateLibrary(resolvedId, libraryItems, merge ?? true);
         return success({ libraryItems: updated, count: updated.length }, `Updated library for ${resolvedId}`);
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "library.import_json",
+    {
+      description: "Import Excalidraw library JSON into a scene library",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+        payload: z.union([z.record(z.string(), z.unknown()), z.array(z.record(z.string(), z.unknown()))]),
+        merge: z.boolean().optional()
+      },
+      outputSchema: standardOutputSchema,
+      annotations: mutatingAnnotations
+    },
+    async ({ sceneId, payload, merge }, extra) => {
+      try {
+        const resolvedId = await resolveSceneId(sceneService, getSessionId(extra), sceneId);
+        const updated = await sceneService.importLibraryFromJson({ sceneId: resolvedId, payload, merge });
+        return success({ libraryItems: updated, count: updated.length }, `Imported library JSON into ${resolvedId}`);
       } catch (error) {
         return failure(error);
       }

@@ -15,7 +15,12 @@ A full-capability MCP server for Excalidraw with:
 ## Features
 
 ### MCP Surfaces
-- Tools: scene, elements, appstate, files, library, diagram, view, export, account, session, health
+- Tools: scene, elements, connectors, appstate, files, library, diagram, view, export, account, session, health
+- Notable authoring capabilities:
+  - `scene.import_json` for ingesting existing `.excalidraw` scene payloads into managed workspace storage
+  - `library.import_json` for ingesting `.excalidrawlib` payloads
+  - `elements.arrange` for deterministic align/distribute/stack/grid layout transforms
+  - `connectors.create` for relationship authoring between existing nodes with optional labels
 - Resources:
   - `excalidraw://scenes`
   - `excalidraw://scene/{sceneId}/summary`
