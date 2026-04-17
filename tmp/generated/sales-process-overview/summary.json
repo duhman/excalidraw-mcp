@@ -1,26 +1,277 @@
 {
   "sceneId": "sales-process-overview",
-  "outputDir": "/Users/minimac/projects/excalidraw-mcp/tmp/generated/sales-process-overview",
-  "excalidrawPath": "/Users/minimac/projects/excalidraw-mcp/tmp/generated/sales-process-overview/sales-process-overview.excalidraw",
-  "pngPath": "/Users/minimac/projects/excalidraw-mcp/tmp/generated/sales-process-overview/sales-process-overview.png",
+  "outputDir": "/Users/workboi/projects/excalidraw-mcp/tmp/generated/sales-process-overview",
+  "excalidrawPath": "/Users/workboi/projects/excalidraw-mcp/tmp/generated/sales-process-overview/sales-process-overview.excalidraw",
+  "pngPath": "/Users/workboi/projects/excalidraw-mcp/tmp/generated/sales-process-overview/sales-process-overview.png",
   "pngError": null,
   "validation": {
     "ok": true,
     "data": {
       "valid": true,
       "issues": [],
-      "qualityIssues": [],
-      "revisionHash": "4cd5dc243755e676e86c85b45ee3de6c8d5a67cc75ecd7c35612de0dbb68b9f9"
+      "qualityIssues": [
+        {
+          "code": "MISSING_LEGEND",
+          "severity": "info",
+          "message": "Scene has relationships but no legend or key text"
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_main",
+          "details": {
+            "otherElementId": "lane_main"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "lane_main",
+          "details": {
+            "otherElementId": "band_main"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_main",
+          "details": {
+            "otherElementId": "lead"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "lead",
+          "details": {
+            "otherElementId": "band_main"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_main",
+          "details": {
+            "otherElementId": "qualify"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "qualify",
+          "details": {
+            "otherElementId": "band_main"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_main",
+          "details": {
+            "otherElementId": "discovery"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "discovery",
+          "details": {
+            "otherElementId": "band_main"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_main",
+          "details": {
+            "otherElementId": "demo"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "demo",
+          "details": {
+            "otherElementId": "band_main"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_main",
+          "details": {
+            "otherElementId": "proposal"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "proposal",
+          "details": {
+            "otherElementId": "band_main"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_main",
+          "details": {
+            "otherElementId": "review"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "review",
+          "details": {
+            "otherElementId": "band_main"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_main",
+          "details": {
+            "otherElementId": "won"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "won",
+          "details": {
+            "otherElementId": "band_main"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_alt",
+          "details": {
+            "otherElementId": "lane_alt"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "lane_alt",
+          "details": {
+            "otherElementId": "band_alt"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_alt",
+          "details": {
+            "otherElementId": "nurture"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "nurture",
+          "details": {
+            "otherElementId": "band_alt"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "band_alt",
+          "details": {
+            "otherElementId": "lost"
+          }
+        },
+        {
+          "code": "ELEMENT_OVERLAP",
+          "severity": "warning",
+          "message": "Elements overlap enough to risk visual collisions",
+          "elementId": "lost",
+          "details": {
+            "otherElementId": "band_alt"
+          }
+        },
+        {
+          "code": "DENSE_CLUSTER",
+          "severity": "warning",
+          "message": "Scene content is tightly packed and may benefit from more space",
+          "details": {
+            "densityRatio": 0.6834212404822335
+          }
+        }
+      ],
+      "qualityScore": 0,
+      "summary": {
+        "bounds": {
+          "x": 40,
+          "y": 30,
+          "width": 1970,
+          "height": 512
+        },
+        "elementCount": 38,
+        "visibleElementCount": 38,
+        "deletedElementCount": 0,
+        "typeHistogram": {
+          "rectangle": 12,
+          "text": 17,
+          "arrow": 9
+        },
+        "graph": {
+          "nodeCount": 12,
+          "connectorCount": 9,
+          "boundConnectorCount": 9,
+          "frameCount": 0
+        },
+        "typography": {
+          "fontFamilies": [
+            1
+          ],
+          "fontSizes": [
+            14,
+            16,
+            18,
+            28
+          ]
+        },
+        "density": {
+          "elementArea": 689326,
+          "canvasArea": 1008640,
+          "ratio": 0.6834212404822335
+        }
+      },
+      "revisionHash": "7a6d57a18956d30bdb8a36250dc72efd5bb897e78a7618866649a6bdd55bf20e"
     }
   },
   "toolsUsed": [
-    "scene.import_json",
-    "elements.create",
-    "elements.arrange",
-    "connectors.create",
-    "view.fit_to_content",
-    "scene.validate",
-    "export.json",
-    "export.png"
+    "scene_import_json",
+    "elements_create",
+    "elements_arrange",
+    "connectors_create",
+    "view_fit_to_content",
+    "scene_validate",
+    "export_json",
+    "export_png"
   ]
 }

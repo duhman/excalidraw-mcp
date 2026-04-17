@@ -5,6 +5,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 const repoRoot = process.cwd();
 const outDir = join(repoRoot, 'tmp', 'generated', 'sales-process-overview');
+const tsxCli = join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+const transportArgs = [tsxCli, 'src/index.ts', '--transport', 'stdio'];
 
 function assertOk(result, label) {
   if (result?.isError) {
@@ -57,8 +59,8 @@ function shapeNode({ id, x, y, width = 180, height = 84, backgroundColor = '#a5d
 
 const client = new Client({ name: 'sales-process-demo', version: '1.0.0' });
 const transport = new StdioClientTransport({
-  command: '/opt/homebrew/bin/node',
-  args: [join(repoRoot, 'dist', 'src', 'index.js'), '--transport', 'stdio'],
+  command: process.execPath,
+  args: transportArgs,
   env: {
     ...process.env,
     MCP_WORKSPACE_ROOT: repoRoot
@@ -88,7 +90,7 @@ await client.connect(transport);
 
 try {
   await client.callTool({
-    name: 'scene.import_json',
+    name: 'scene_import_json',
     arguments: {
       sceneId,
       merge: false,
@@ -111,10 +113,10 @@ try {
         libraryItems: []
       }
     }
-  }).then((r) => assertOk(r, 'scene.import_json'));
+  }).then((r) => assertOk(r, 'scene_import_json'));
 
   await client.callTool({
-    name: 'elements.create',
+    name: 'elements_create',
     arguments: {
       sceneId,
       elements: [
@@ -122,10 +124,10 @@ try {
         ...sideStages.map((stage) => shapeNode(stage))
       ]
     }
-  }).then((r) => assertOk(r, 'elements.create shapes'));
+  }).then((r) => assertOk(r, 'elements_create shapes'));
 
   await client.callTool({
-    name: 'elements.arrange',
+    name: 'elements_arrange',
     arguments: {
       sceneId,
       elementIds: mainStages.map((stage) => stage.id),
@@ -134,12 +136,12 @@ try {
       gap: 70,
       anchor: 'center'
     }
-  }).then((r) => assertOk(r, 'elements.arrange main flow'));
+  }).then((r) => assertOk(r, 'elements_arrange main flow'));
 
   const elementsResult = await client.callTool({
-    name: 'elements.list',
+    name: 'elements_list',
     arguments: { sceneId, limit: 500 }
-  }).then((r) => assertOk(r, 'elements.list'));
+  }).then((r) => assertOk(r, 'elements_list'));
 
   const elements = dataOf(elementsResult).elements;
   const byId = new Map(elements.map((element) => [element.id, element]));
@@ -162,12 +164,12 @@ try {
   }
 
   await client.callTool({
-    name: 'elements.create',
+    name: 'elements_create',
     arguments: {
       sceneId,
       elements: textElements
     }
-  }).then((r) => assertOk(r, 'elements.create labels'));
+  }).then((r) => assertOk(r, 'elements_create labels'));
 
   const mainConnectorPairs = [
     ['lead', 'qualify'],
@@ -181,13 +183,13 @@ try {
 
   for (const [sourceElementId, targetElementId] of mainConnectorPairs) {
     await client.callTool({
-      name: 'connectors.create',
+      name: 'connectors_create',
       arguments: { sceneId, sourceElementId, targetElementId }
-    }).then((r) => assertOk(r, `connectors.create ${sourceElementId}->${targetElementId}`));
+    }).then((r) => assertOk(r, `connectors_create ${sourceElementId}->${targetElementId}`));
   }
 
   await client.callTool({
-    name: 'connectors.create',
+    name: 'connectors_create',
     arguments: {
       sceneId,
       sourceElementId: 'qualify',
@@ -196,7 +198,7 @@ try {
   }).then((r) => assertOk(r, 'connector branch nurture'));
 
   await client.callTool({
-    name: 'connectors.create',
+    name: 'connectors_create',
     arguments: {
       sceneId,
       sourceElementId: 'review',
@@ -205,7 +207,7 @@ try {
   }).then((r) => assertOk(r, 'connector branch lost'));
 
   await client.callTool({
-    name: 'elements.create',
+    name: 'elements_create',
     arguments: {
       sceneId,
       elements: [
@@ -213,24 +215,24 @@ try {
         textNode('note_lost', 'drop out after review', 1100, 300, 180, 20, 14)
       ]
     }
-  }).then((r) => assertOk(r, 'elements.create branch notes'));
+  }).then((r) => assertOk(r, 'elements_create branch notes'));
 
   await client.callTool({
-    name: 'view.fit_to_content',
+    name: 'view_fit_to_content',
     arguments: { sceneId }
-  }).then((r) => assertOk(r, 'view.fit_to_content'));
+  }).then((r) => assertOk(r, 'view_fit_to_content'));
 
   const validation = await client.callTool({
-    name: 'scene.validate',
+    name: 'scene_validate',
     arguments: { sceneId }
-  }).then((r) => assertOk(r, 'scene.validate'));
+  }).then((r) => assertOk(r, 'scene_validate'));
 
   const validationData = validation.structuredContent;
 
   const jsonExport = await client.callTool({
-    name: 'export.json',
+    name: 'export_json',
     arguments: { sceneId }
-  }).then((r) => assertOk(r, 'export.json'));
+  }).then((r) => assertOk(r, 'export_json'));
   const jsonData = dataOf(jsonExport);
   const jsonBuffer = Buffer.from(jsonData.base64, 'base64');
   const excalidrawPath = join(outDir, 'sales-process-overview.excalidraw');
@@ -240,9 +242,9 @@ try {
   let pngError = null;
   try {
     const pngExport = await client.callTool({
-      name: 'export.png',
+      name: 'export_png',
       arguments: { sceneId, options: { padding: 24, darkMode: false, maxWidthOrHeight: 2200 } }
-    }).then((r) => assertOk(r, 'export.png'));
+    }).then((r) => assertOk(r, 'export_png'));
     const pngData = dataOf(pngExport);
     pngPath = join(outDir, 'sales-process-overview.png');
     await writeFile(pngPath, Buffer.from(pngData.base64, 'base64'));
@@ -258,19 +260,19 @@ try {
     pngError,
     validation: validationData,
     toolsUsed: [
-      'scene.import_json',
-      'elements.create',
-      'elements.arrange',
-      'connectors.create',
-      'view.fit_to_content',
-      'scene.validate',
-      'export.json',
-      'export.png'
+      'scene_import_json',
+      'elements_create',
+      'elements_arrange',
+      'connectors_create',
+      'view_fit_to_content',
+      'scene_validate',
+      'export_json',
+      'export_png'
     ]
   };
 
   await writeFile(join(outDir, 'summary.json'), JSON.stringify(summary, null, 2));
-  console.log(JSON.stringify(summary, null, 2));
+  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 } finally {
   await client.close();
 }

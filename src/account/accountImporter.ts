@@ -6,6 +6,12 @@ import { AppError } from "../utils/errors.js";
 export type AccountDestination = "plus" | "excalidraw";
 export type AccountImportKind = "scene" | "library";
 export type AccountImportMode = "headed" | "headless";
+export type AccountReasonCode =
+  | "READY"
+  | "AUTH_NOT_READY"
+  | "IMPORTED"
+  | "IMPORT_STRATEGY_FAILED"
+  | "POST_IMPORT_VERIFICATION_FAILED";
 
 export interface AccountImportOptions {
   inputPath: string;
@@ -29,6 +35,7 @@ export interface AccountLoginOptions {
 export interface AccountImportResult {
   status: "success" | "checkpoint_required";
   reason: string;
+  reasonCode: AccountReasonCode;
   destination: AccountDestination;
   kind: AccountImportKind;
   session: string;
@@ -41,6 +48,7 @@ export interface AccountImportResult {
 export interface AccountLoginResult {
   status: "ready" | "checkpoint_required";
   reason: string;
+  reasonCode: AccountReasonCode;
   destination: AccountDestination;
   session: string;
   screenshotPath: string;
@@ -63,6 +71,20 @@ export interface AccountLinkStatus {
 
 const STRATEGIES = ["A", "B", "C"] as const;
 
+type LaunchPersistentContext = (
+  profilePath: string,
+  options: { headless: boolean },
+) => Promise<BrowserContext>;
+
+interface AccountImporterDependencies {
+  launchPersistentContext?: LaunchPersistentContext;
+  now?: () => string;
+  nowMs?: () => number;
+  readinessPollMs?: number;
+  interactiveLoginWaitMs?: number;
+  importSettleMs?: number;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -84,12 +106,30 @@ export class AccountImporter {
   private readonly profilesDir: string;
   private readonly artifactsDir: string;
   private readonly historyPath: string;
+  private readonly launchPersistentContext: LaunchPersistentContext;
+  private readonly now: () => string;
+  private readonly nowMs: () => number;
+  private readonly readinessPollMs: number;
+  private readonly interactiveLoginWaitMs: number;
+  private readonly importSettleMs: number;
 
-  constructor(rootDir: string) {
+  constructor(rootDir: string, dependencies: AccountImporterDependencies = {}) {
     this.rootDir = rootDir;
     this.profilesDir = join(rootDir, "profiles");
     this.artifactsDir = join(rootDir, "artifacts");
     this.historyPath = join(rootDir, "import-history.jsonl");
+    this.launchPersistentContext =
+      dependencies.launchPersistentContext ??
+      ((profilePath, options) =>
+        chromium.launchPersistentContext(profilePath, options));
+    this.now = dependencies.now ?? nowIso;
+    this.nowMs = dependencies.nowMs ?? Date.now;
+    this.readinessPollMs = Math.max(50, dependencies.readinessPollMs ?? 750);
+    this.interactiveLoginWaitMs = Math.max(
+      0,
+      dependencies.interactiveLoginWaitMs ?? 4_000,
+    );
+    this.importSettleMs = Math.max(0, dependencies.importSettleMs ?? 1_200);
   }
 
   async init(): Promise<void> {
@@ -113,7 +153,7 @@ export class AccountImporter {
       suffix: "login"
     });
 
-    const context = await chromium.launchPersistentContext(profilePath, {
+    const context = await this.launchPersistentContext(profilePath, {
       headless: mode === "headless"
     });
 
@@ -129,12 +169,13 @@ export class AccountImporter {
         reason: ready
           ? "Session is authenticated and Excalidraw canvas is ready."
           : "Session not ready. Complete sign-in in this profile and rerun login_session.",
+        reasonCode: ready ? "READY" : "AUTH_NOT_READY",
         destination,
         session,
         screenshotPath,
         url: page.url(),
         profilePath,
-        timestamp: nowIso()
+        timestamp: this.now()
       };
 
       await this.writeLastLogin(result);
@@ -164,7 +205,7 @@ export class AccountImporter {
       destination
     });
 
-    const context = await chromium.launchPersistentContext(profilePath, {
+    const context = await this.launchPersistentContext(profilePath, {
       headless: mode === "headless"
     });
 
@@ -173,7 +214,7 @@ export class AccountImporter {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
 
       if (allowInteractiveLogin && mode === "headed") {
-        await page.waitForTimeout(4_000);
+        await page.waitForTimeout(this.interactiveLoginWaitMs);
       }
 
       const authReady = await this.isUiReady(page, expectedHost, timeoutMs / 2);
@@ -182,13 +223,14 @@ export class AccountImporter {
           status: "checkpoint_required",
           reason:
             "Authenticated Excalidraw session not ready. Sign in manually in the profile and retry, or call again with mode=headed and allowInteractiveLogin=true.",
+          reasonCode: "AUTH_NOT_READY",
           destination,
           kind: options.kind,
           session,
           strategy: "none",
           screenshotPath,
           url: page.url(),
-          timestamp: nowIso()
+          timestamp: this.now()
         };
 
         await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => undefined);
@@ -214,26 +256,34 @@ export class AccountImporter {
       if (successStrategy === "none") {
         throw new AppError("BAD_REQUEST", "All import strategies failed", 400, {
           destination,
-          kind: options.kind
+          kind: options.kind,
+          reasonCode: "IMPORT_STRATEGY_FAILED",
+          strategiesTried: [...STRATEGIES],
         });
       }
 
       await page.screenshot({ path: screenshotPath, fullPage: true });
       const verified = await this.assertUi(page, expectedHost);
       if (!verified) {
-        throw new AppError("BAD_REQUEST", "Import completed but post-import assertions failed", 400);
+        throw new AppError(
+          "BAD_REQUEST",
+          "Import completed but post-import assertions failed",
+          400,
+          { reasonCode: "POST_IMPORT_VERIFICATION_FAILED", destination, kind: options.kind },
+        );
       }
 
       const result: AccountImportResult = {
         status: "success",
         reason: "imported",
+        reasonCode: "IMPORTED",
         destination,
         kind: options.kind,
         session,
         strategy: successStrategy,
         screenshotPath,
         url: page.url(),
-        timestamp: nowIso()
+        timestamp: this.now()
       };
 
       await this.appendHistory(result);
@@ -360,8 +410,8 @@ export class AccountImporter {
   }
 
   private async isUiReady(page: Page, expectedHost: string, timeoutMs: number): Promise<boolean> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
+    const start = this.nowMs();
+    while (this.nowMs() - start < timeoutMs) {
       const host = new URL(page.url()).host;
       const hostOk = host === expectedHost || host.endsWith(`.${expectedHost}`);
       const hasCanvas = (await page.locator(".excalidraw canvas, canvas").count()) > 0;
@@ -370,7 +420,7 @@ export class AccountImporter {
         return true;
       }
 
-      await page.waitForTimeout(750);
+      await page.waitForTimeout(this.readinessPollMs);
     }
 
     return false;
@@ -406,7 +456,7 @@ export class AccountImporter {
         }
 
         await fileInputs.first().setInputFiles(inputPath);
-        await page.waitForTimeout(1_200);
+        await page.waitForTimeout(this.importSettleMs);
         return true;
       }
 
@@ -418,7 +468,7 @@ export class AccountImporter {
           return false;
         }
         await chooser.setFiles(inputPath);
-        await page.waitForTimeout(1_200);
+        await page.waitForTimeout(this.importSettleMs);
         return true;
       }
 
@@ -444,7 +494,7 @@ export class AccountImporter {
       }
 
       await chooser.setFiles(inputPath);
-      await page.waitForTimeout(1_200);
+      await page.waitForTimeout(this.importSettleMs);
       return true;
     } catch {
       return false;

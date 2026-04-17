@@ -52,7 +52,24 @@ describe("SceneService advanced authoring", () => {
             dataURL: `data:image/png;base64,${Buffer.from("img").toString("base64")}`
           }
         },
-        libraryItems: [{ id: "lib1", status: "published", elements: [] }]
+        libraryItems: [
+          {
+            id: "lib1",
+            status: "published",
+            created: Date.now(),
+            name: "Reusable Box",
+            elements: [
+              {
+                id: "lib-rect",
+                type: "rectangle",
+                x: 0,
+                y: 0,
+                width: 120,
+                height: 64,
+              },
+            ],
+          },
+        ]
       }
     });
 
@@ -109,10 +126,130 @@ describe("SceneService advanced authoring", () => {
     expect(connector).toBeTruthy();
     expect(connector.startBinding.elementId).toBe("left");
     expect(connector.endBinding.elementId).toBe("right");
-    expect(connector.x).toBe(160);
-    expect(connector.y).toBe(40);
+    expect(connector.x).toBeCloseTo(160.5, 3);
+    expect(connector.y).toBeCloseTo(40, 3);
     expect(connector.points[0]).toEqual([0, 0]);
     expect(connector.points[1][0]).toBeGreaterThan(0);
     expect(result.scene.elements.some((element: any) => element.type === "text" && element.containerId === connector.id)).toBe(true);
+  });
+
+  it("composes semantic nodes with wrapped body text, icon slot, image slot, and frame assignment", async () => {
+    await service.createScene({ sceneId: "compose-scene" });
+    const attached = await service.attachFile("compose-scene", {
+      mimeType: "image/png",
+      base64: Buffer.from("node-image").toString("base64"),
+    });
+
+    await service.createFrame("compose-scene", {
+      frameId: "frame-a",
+      name: "Area A",
+      x: 40,
+      y: 40,
+      width: 420,
+      height: 260,
+    });
+
+    const composed = await service.composeNodes("compose-scene", {
+      preset: "process",
+      nodes: [
+        {
+          nodeId: "semantic-node",
+          x: 80,
+          y: 100,
+          width: 220,
+          minHeight: 120,
+          title: "Primary Node",
+          body: "This body text should wrap into multiple lines for deterministic sizing.",
+          iconText: "AI",
+          imageFileId: attached.fileId,
+          frameId: "frame-a",
+        },
+      ],
+    });
+
+    const container = composed.scene.elements.find((element: any) => element.id === "semantic-node");
+    const title = composed.scene.elements.find((element: any) => element.id === composed.nodes[0]?.titleTextId);
+    const body = composed.scene.elements.find((element: any) => element.id === composed.nodes[0]?.bodyTextId);
+    const icon = composed.scene.elements.find((element: any) => element.id === composed.nodes[0]?.iconElementId);
+    const image = composed.scene.elements.find((element: any) => element.id === composed.nodes[0]?.imageElementId);
+
+    expect(composed.nodes).toHaveLength(1);
+    expect(container?.type).toBe("rectangle");
+    expect(container?.frameId).toBe("frame-a");
+    expect(Number(container?.height)).toBeGreaterThanOrEqual(120);
+    expect(title?.text).toContain("Primary Node");
+    expect(body?.text).toContain("\n");
+    expect(body?.frameId).toBe("frame-a");
+    expect(icon?.type).toBe("rectangle");
+    expect(image?.type).toBe("image");
+    expect(image?.fileId).toBe(attached.fileId);
+  });
+
+  it("creates swimlanes with headers and assigns lane-local content into frames", async () => {
+    await service.createScene({
+      sceneId: "swimlane-scene",
+      elements: [
+        { id: "lead", type: "rectangle", x: 0, y: 0, width: 140, height: 72 },
+        { id: "build", type: "rectangle", x: 320, y: 140, width: 160, height: 72 },
+      ],
+    });
+
+    const result = await service.layoutSwimlanes("swimlane-scene", {
+      laneArrangement: "columns",
+      originX: 24,
+      originY: 40,
+      laneWidth: 280,
+      laneHeight: 260,
+      lanes: [
+        { laneId: "lane-sales", label: "Sales", elementIds: ["lead"] },
+        { laneId: "lane-ops", label: "Operations", elementIds: ["build"] },
+      ],
+    });
+
+    const laneSales = result.scene.elements.find((element: any) => element.id === "lane-sales");
+    const laneOps = result.scene.elements.find((element: any) => element.id === "lane-ops");
+    const lead = result.scene.elements.find((element: any) => element.id === "lead");
+    const build = result.scene.elements.find((element: any) => element.id === "build");
+    const headers = result.scene.elements.filter(
+      (element: any) => element.customData?.semanticRole === "lane-header",
+    );
+
+    expect(result.laneFrameIds).toEqual(["lane-sales", "lane-ops"]);
+    expect(result.laneHeaderIds).toHaveLength(2);
+    expect(headers.map((header: any) => header.text)).toEqual(
+      expect.arrayContaining(["Sales", "Operations"]),
+    );
+    expect(laneSales?.type).toBe("frame");
+    expect(laneOps?.type).toBe("frame");
+    expect(lead?.frameId).toBe("lane-sales");
+    expect(build?.frameId).toBe("lane-ops");
+    expect(Number(lead?.x)).toBeGreaterThanOrEqual(Number(laneSales?.x));
+    expect(Number(build?.x)).toBeGreaterThanOrEqual(Number(laneOps?.x));
+  });
+
+  it("deterministically polishes overlap-heavy layouts", async () => {
+    await service.createScene({
+      sceneId: "polish-scene",
+      elements: [
+        { id: "one", type: "rectangle", x: 80, y: 120, width: 180, height: 96 },
+        { id: "two", type: "rectangle", x: 140, y: 150, width: 180, height: 96 },
+      ],
+    });
+
+    const before = await service.analyzeScene("polish-scene");
+    expect(before.issues.some((issue) => issue.code === "ELEMENT_OVERLAP")).toBe(
+      true,
+    );
+
+    const polished = await service.layoutPolish("polish-scene", {
+      issueCodes: ["ELEMENT_OVERLAP"],
+      mode: "safe",
+    });
+
+    const after = await service.analyzeScene("polish-scene");
+    expect(polished.appliedActions).toContain("resolved_overlaps");
+    expect(after.issues.filter((issue) => issue.code === "ELEMENT_OVERLAP").length).toBeLessThan(
+      before.issues.filter((issue) => issue.code === "ELEMENT_OVERLAP").length,
+    );
   });
 });

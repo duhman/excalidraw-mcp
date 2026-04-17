@@ -24,7 +24,7 @@ describe("HTTP transport integration", () => {
       port: 0,
       path: "/mcp",
       workspaceRoot: rootDir,
-      allowedHosts: ["127.0.0.1", "localhost"]
+      allowedHosts: ["127.0.0.1", "localhost"],
     });
 
     const address = httpServer.address() as AddressInfo;
@@ -33,25 +33,25 @@ describe("HTTP transport integration", () => {
     const transport = new StreamableHTTPClientTransport(baseUrl);
     const client = new Client({
       name: "http-test-client",
-      version: "1.0.0"
+      version: "1.0.0",
     });
 
     await client.connect(transport);
 
     const tools = await client.listTools();
-    expect(tools.tools.some((tool) => tool.name === "health.ping")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "health_ping")).toBe(true);
 
     const created = await client.callTool({
-      name: "scene.create",
+      name: "scene_create",
       arguments: {
-        sceneId: "http-scene"
-      }
+        sceneId: "http-scene",
+      },
     });
     expect(created.isError).toBeFalsy();
 
     const health = await client.callTool({
-      name: "health.ping",
-      arguments: {}
+      name: "health_ping",
+      arguments: {},
     });
     expect(health.isError).toBeFalsy();
 

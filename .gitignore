@@ -3,3 +3,4 @@ dist/
 .excalidraw-mcp/
 coverage/
 .DS_Store
+src/**/*.bundle.js

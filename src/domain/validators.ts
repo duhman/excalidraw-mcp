@@ -1,4 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  restore,
+  restoreElements,
+  restoreLibraryItems,
+} from "../excalidraw/native/excalidrawNodeApi.bundle.js";
 import type { SceneEnvelope, SceneMetadata } from "../types/contracts.js";
 import { applyDiagramQuality } from "./diagramQuality.js";
 
@@ -14,75 +19,144 @@ function ensureArray(value: unknown): any[] {
   return Array.isArray(value) ? value : [];
 }
 
-function normalizeElement(element: any): any {
-  const next = ensureObject(element);
+function finiteNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
-  return {
-    id: typeof next.id === "string" && next.id.length > 0 ? next.id : randomUUID(),
-    type: typeof next.type === "string" ? next.type : "rectangle",
-    x: Number(next.x ?? 0),
-    y: Number(next.y ?? 0),
-    width: Number(next.width ?? 100),
-    height: Number(next.height ?? 100),
-    angle: Number(next.angle ?? 0),
-    isDeleted: Boolean(next.isDeleted),
-    version: Number(next.version ?? 1),
-    versionNonce: Number(next.versionNonce ?? Math.floor(Math.random() * 1_000_000_000)),
-    ...next
-  };
+function normalizeBinaryFiles(filesInput: unknown): Record<string, any> {
+  const files = ensureObject(filesInput);
+  const normalized: Record<string, any> = {};
+
+  for (const [fileId, rawValue] of Object.entries(files)) {
+    const value = ensureObject(rawValue);
+    const id =
+      typeof value.id === "string" && value.id.length > 0 ? value.id : fileId;
+    const dataURL =
+      typeof value.dataURL === "string" ? value.dataURL.trim() : "";
+    const mimeType =
+      typeof value.mimeType === "string" && value.mimeType.length > 0
+        ? value.mimeType
+        : "application/octet-stream";
+
+    normalized[fileId] = {
+      ...value,
+      id,
+      dataURL,
+      mimeType,
+      created: finiteNumber(value.created, Date.now()),
+      lastRetrieved: finiteNumber(value.lastRetrieved, Date.now()),
+      version: Math.max(1, finiteNumber(value.version, 1)),
+    };
+  }
+
+  return normalized;
 }
 
 function detectEngineHints(elements: any[]): SceneMetadata["engineHints"] {
   return {
-    hasFrames: elements.some((element) => element?.type === "frame" || element?.type === "magicframe"),
+    hasFrames: elements.some(
+      (element) =>
+        element?.type === "frame" || element?.type === "magicframe",
+    ),
     hasEmbeddables: elements.some((element) => element?.type === "embeddable"),
-    hasImages: elements.some((element) => element?.type === "image")
+    hasImages: elements.some((element) => element?.type === "image"),
   };
 }
 
-export function normalizeScene(scene: SceneEnvelope): SceneEnvelope {
-  const elements = ensureArray(scene.elements).map(normalizeElement);
-  const appState = ensureObject(scene.appState);
-  const files = ensureObject(scene.files) as Record<string, any>;
-  const libraryItems = ensureArray(scene.libraryItems).map((item) => ensureObject(item));
-  const quality = applyDiagramQuality(
-    {
-      ...scene,
-      elements,
-      appState,
-      files,
-      libraryItems
-    },
-    true
-  );
-
-  const metadata: SceneMetadata = {
-    ...scene.metadata,
-    updatedAt: new Date().toISOString(),
-    elementCount: quality.scene.elements.length,
-    fileCount: Object.keys(files).length,
-    engineHints: detectEngineHints(quality.scene.elements),
-    revisionHash: computeRevisionHash(quality.scene.elements, appState, files, libraryItems)
-  };
+function normalizeMetadata(
+  metadataInput: unknown,
+  elements: any[],
+  appState: Record<string, unknown>,
+  files: Record<string, any>,
+  libraryItems: any[],
+): SceneMetadata {
+  const metadata = ensureObject(metadataInput);
+  const now = new Date().toISOString();
+  const sceneId =
+    typeof metadata.sceneId === "string" && metadata.sceneId.length > 0
+      ? metadata.sceneId
+      : randomUUID();
 
   return {
-    metadata,
-    elements: quality.scene.elements,
-    appState,
-    files,
-    libraryItems
+    sceneId,
+    name:
+      typeof metadata.name === "string" && metadata.name.length > 0
+        ? metadata.name
+        : `Scene ${sceneId.slice(0, 8)}`,
+    createdAt:
+      typeof metadata.createdAt === "string" && metadata.createdAt.length > 0
+        ? metadata.createdAt
+        : now,
+    updatedAt: now,
+    elementCount: elements.length,
+    fileCount: Object.keys(files).length,
+    engineHints: detectEngineHints(elements),
+    revisionHash: computeRevisionHash(elements, appState, files, libraryItems),
   };
 }
 
 export function normalizeElements(elements: any[]): any[] {
-  return ensureArray(elements).map(normalizeElement);
+  return restoreElements(ensureArray(elements) as any, undefined, {
+    refreshDimensions: true,
+    repairBindings: true,
+  }) as any[];
+}
+
+export function normalizeScene(scene: SceneEnvelope): SceneEnvelope {
+  const files = normalizeBinaryFiles(scene.files);
+  const restored = restore(
+    {
+      elements: ensureArray(scene.elements) as any,
+      appState: ensureObject(scene.appState) as any,
+      files: files as any,
+    },
+    ensureObject(scene.appState) as any,
+    undefined,
+    {
+      refreshDimensions: true,
+      repairBindings: true,
+    },
+  );
+
+  const libraryItems = restoreLibraryItems(
+    ensureArray(scene.libraryItems) as any,
+    "unpublished",
+  ) as any[];
+
+  const quality = applyDiagramQuality(
+    {
+      ...scene,
+      elements: restored.elements as any[],
+      appState: restored.appState as Record<string, unknown>,
+      files: restored.files as Record<string, any>,
+      libraryItems,
+    },
+    true,
+  );
+
+  const metadata = normalizeMetadata(
+    scene.metadata,
+    quality.scene.elements,
+    quality.scene.appState,
+    quality.scene.files,
+    quality.scene.libraryItems,
+  );
+
+  return {
+    metadata,
+    elements: quality.scene.elements,
+    appState: quality.scene.appState,
+    files: quality.scene.files,
+    libraryItems: quality.scene.libraryItems,
+  };
 }
 
 export function computeRevisionHash(
   elements: any[],
   appState: Record<string, unknown>,
   files: Record<string, unknown>,
-  libraryItems: any[]
+  libraryItems: any[],
 ): string {
   return createHash("sha256")
     .update(JSON.stringify({ elements, appState, files, libraryItems }))

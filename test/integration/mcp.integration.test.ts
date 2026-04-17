@@ -20,120 +20,315 @@ describe("MCP in-memory integration", () => {
   it("exposes tools/resources/prompts and supports basic scene workflow", async () => {
     const services = await createExcalidrawMcpServer({
       workspaceRoot: rootDir,
-      version: "test"
+      version: "test",
     });
 
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
 
     const client = new Client({
       name: "test-client",
-      version: "1.0.0"
+      version: "1.0.0",
     });
 
     await services.server.connect(serverTransport);
     await client.connect(clientTransport);
 
     const tools = await client.listTools();
-    expect(tools.tools.some((tool) => tool.name === "scene.create")).toBe(true);
-    expect(tools.tools.some((tool) => tool.name === "scene.import_json")).toBe(true);
-    expect(tools.tools.some((tool) => tool.name === "elements.arrange")).toBe(true);
-    expect(tools.tools.some((tool) => tool.name === "connectors.create")).toBe(true);
-    expect(tools.tools.some((tool) => tool.name === "export.json")).toBe(true);
-    expect(tools.tools.some((tool) => tool.name === "account.login_session")).toBe(true);
-    expect(tools.tools.some((tool) => tool.name === "account.import_scene")).toBe(true);
-    expect(tools.tools.some((tool) => tool.name === "account.link_status")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "scene_create")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "scene_import_json")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "scene_analyze")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "elements_arrange")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "connectors_create")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "frames_create")).toBe(
+      true,
+    );
+    expect(
+      tools.tools.some((tool) => tool.name === "frames_assign_elements"),
+    ).toBe(true);
+    expect(
+      tools.tools.some((tool) => tool.name === "styles_apply_preset"),
+    ).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "layers_reorder")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "nodes_create")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "nodes_compose")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "layout_flow")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "layout_swimlanes")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "layout_polish")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "export_json")).toBe(true);
+    expect(
+      tools.tools.some((tool) => tool.name === "account_login_session"),
+    ).toBe(true);
+    expect(
+      tools.tools.some((tool) => tool.name === "account_import_scene"),
+    ).toBe(true);
+    expect(
+      tools.tools.some((tool) => tool.name === "account_link_status"),
+    ).toBe(true);
 
     const created = await client.callTool({
-      name: "scene.create",
+      name: "scene_create",
       arguments: {
         sceneId: "it-scene",
-        name: "Integration Scene"
-      }
+        name: "Integration Scene",
+      },
     });
     expect(created.isError).toBeFalsy();
 
     const imported = await client.callTool({
-      name: "scene.import_json",
+      name: "scene_import_json",
       arguments: {
         sceneId: "it-imported",
         payload: {
           type: "excalidraw",
           version: 2,
           source: "https://excalidraw.com",
-          elements: [{ id: "imported-node", type: "rectangle", x: 10, y: 20, width: 140, height: 60 }],
+          elements: [
+            {
+              id: "imported-node",
+              type: "rectangle",
+              x: 10,
+              y: 20,
+              width: 140,
+              height: 60,
+            },
+          ],
           appState: { viewBackgroundColor: "#ffffff" },
           files: {},
-          libraryItems: []
-        }
-      }
+          libraryItems: [],
+        },
+      },
     });
     expect(imported.isError).toBeFalsy();
 
     const opened = await client.callTool({
-      name: "scene.open",
+      name: "scene_open",
       arguments: {
-        sceneId: "it-scene"
-      }
+        sceneId: "it-scene",
+      },
     });
     expect(opened.isError).toBeFalsy();
 
     const elementsCreated = await client.callTool({
-      name: "elements.create",
+      name: "elements_create",
       arguments: {
         elements: [
           { id: "left", type: "ellipse", x: 50, y: 50, width: 80, height: 80 },
-          { id: "right", type: "rectangle", x: 260, y: 220, width: 120, height: 80 }
-        ]
-      }
+          {
+            id: "right",
+            type: "rectangle",
+            x: 260,
+            y: 220,
+            width: 120,
+            height: 80,
+          },
+        ],
+      },
     });
     expect(elementsCreated.isError).toBeFalsy();
 
     const arranged = await client.callTool({
-      name: "elements.arrange",
+      name: "elements_arrange",
       arguments: {
         elementIds: ["left", "right"],
         mode: "stack",
         axis: "y",
         gap: 24,
-        anchor: "center"
-      }
+        anchor: "center",
+      },
     });
     expect(arranged.isError).toBeFalsy();
 
+    const frameCreated = await client.callTool({
+      name: "frames_create",
+      arguments: {
+        name: "Main Flow",
+        x: 20,
+        y: 20,
+        width: 460,
+        height: 320,
+        elementIds: ["left", "right"],
+      },
+    });
+    expect(frameCreated.isError).toBeFalsy();
+    const frameId = (frameCreated as any).structuredContent?.data?.frameId;
+    expect(frameId).toBeTruthy();
+
+    const assignedToFrame = await client.callTool({
+      name: "frames_assign_elements",
+      arguments: {
+        frameId,
+        elementIds: ["left", "right"],
+      },
+    });
+    expect(assignedToFrame.isError).toBeFalsy();
+
+    const styled = await client.callTool({
+      name: "styles_apply_preset",
+      arguments: {
+        elementIds: ["left", "right"],
+        preset: "process",
+      },
+    });
+    expect(styled.isError).toBeFalsy();
+
     const connected = await client.callTool({
-      name: "connectors.create",
+      name: "connectors_create",
       arguments: {
         sourceElementId: "left",
         targetElementId: "right",
-        label: "flows"
-      }
+        label: "flows",
+      },
     });
     expect(connected.isError).toBeFalsy();
 
+    const reordered = await client.callTool({
+      name: "layers_reorder",
+      arguments: {
+        elementIds: ["left"],
+        direction: "front",
+      },
+    });
+    expect(reordered.isError).toBeFalsy();
+
+    const nodesCreated = await client.callTool({
+      name: "nodes_create",
+      arguments: {
+        preset: "note",
+        nodes: [
+          {
+            id: "note-1",
+            label: "Context",
+            body: "Agent-authored note",
+            x: 520,
+            y: 40,
+            width: 180,
+            height: 96,
+          },
+        ],
+      },
+    });
+    expect(nodesCreated.isError).toBeFalsy();
+
+    const semanticNodes = await client.callTool({
+      name: "nodes_compose",
+      arguments: {
+        preset: "process",
+        nodes: [
+          {
+            nodeId: "semantic-node",
+            title: "Semantic Node",
+            body: "Programmatic authoring with stronger structure",
+            iconText: "AI",
+            x: 520,
+            y: 180,
+            width: 220,
+            minHeight: 120,
+          },
+        ],
+      },
+    });
+    expect(semanticNodes.isError).toBeFalsy();
+
+    const flow = await client.callTool({
+      name: "layout_flow",
+      arguments: {
+        elementIds: ["left", "right"],
+        direction: "vertical",
+        gap: 32,
+        connect: false,
+      },
+    });
+    expect(flow.isError).toBeFalsy();
+
+    const swimlanes = await client.callTool({
+      name: "layout_swimlanes",
+      arguments: {
+        laneArrangement: "columns",
+        originX: 20,
+        originY: 360,
+        laneWidth: 280,
+        laneHeight: 240,
+        lanes: [
+          { laneId: "lane-left", label: "Intake", elementIds: ["left"] },
+          { laneId: "lane-right", label: "Delivery", elementIds: ["right"] },
+        ],
+      },
+    });
+    expect(swimlanes.isError).toBeFalsy();
+
+    const analysis = await client.callTool({
+      name: "scene_analyze",
+      arguments: {},
+    });
+    expect(analysis.isError).toBeFalsy();
+    expect(
+      (analysis as any).structuredContent?.data?.summary?.elementCount,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      Array.isArray(
+        (analysis as any).structuredContent?.data?.recommendedActions,
+      ),
+    ).toBe(true);
+
+    const polished = await client.callTool({
+      name: "layout_polish",
+      arguments: {
+        mode: "safe",
+      },
+    });
+    expect(polished.isError).toBeFalsy();
+
     const exported = await client.callTool({
-      name: "export.json",
-      arguments: {}
+      name: "export_json",
+      arguments: {},
     });
     expect(exported.isError).toBeFalsy();
 
     const resource = await client.readResource({
-      uri: "excalidraw://scene/it-scene/summary"
+      uri: "excalidraw://scene/it-scene/summary",
     });
     expect(resource.contents.length).toBeGreaterThan(0);
+
+    const analysisResource = await client.readResource({
+      uri: "excalidraw://scene/it-scene/analysis",
+    });
+    expect(analysisResource.contents.length).toBeGreaterThan(0);
+    expect((analysisResource.contents[0] as any).text).toContain(
+      "recommendedActions",
+    );
 
     const prompt = await client.getPrompt({
       name: "diagram-from-spec",
       arguments: {
-        requirements: "Draw service A calling service B"
-      }
+        requirements: "Draw service A calling service B",
+      },
     });
     expect(prompt.messages.length).toBeGreaterThan(0);
 
     const linkStatus = await client.callTool({
-      name: "account.link_status",
+      name: "account_link_status",
       arguments: {
-        session: "integration-session"
-      }
+        session: "integration-session",
+      },
     });
     expect(linkStatus.isError).toBeFalsy();
 

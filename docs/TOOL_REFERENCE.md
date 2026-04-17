@@ -1,132 +1,230 @@
 # Tool Reference
 
-All tools return structured output with shape:
+All tools return structured output shaped like:
+
 - `ok: boolean`
 - `data?: object`
 - `error?: { code, message, details? }`
 
 ## Scene Tools
-- `scene.create`: create scene file.
-- `scene.import_json`: import an Excalidraw scene payload into managed workspace storage.
-- `scene.open`: set active scene for current MCP session.
-- `scene.list`: list scene metadata.
-- `scene.get`: get full scene payload.
-- `scene.save`: persist scene.
-- `scene.close`: clear active scene for session.
-- `scene.patch`: apply ordered patch operations.
-- `scene.validate`: static scene checks.
-- `scene.normalize`: normalize/repair scene payload.
 
-`scene.validate` now includes quality diagnostics:
-- connector binding integrity (`CONNECTOR_UNBOUND`)
-- text overflow in containerized text (`TEXT_OVERFLOW`)
+- `scene_create`
+- `scene_import_json`
+- `scene_open`
+- `scene_list`
+- `scene_get`
+- `scene_save`
+- `scene_close`
+- `scene_patch`
+- `scene_validate`
+- `scene_normalize`
+- `scene_analyze`
+
+### `scene_validate`
+
+Use for hard correctness checks. Returns:
+
+- `valid`
+- `issues`
+- `qualityIssues`
+- `qualityScore`
+- `summary`
+- `revisionHash`
+
+### `scene_analyze`
+
+Use for richer review and deterministic follow-up planning. Returns:
+
+- `issues`
+- `score`
+- `summary`
+- `recommendedActions`
+
+`recommendedActions` currently points agents toward deterministic helpers such as:
+
+- `scene_normalize`
+- `layout_polish`
+- `styles_apply_preset`
+- other targeted follow-up tools when applicable
 
 ## Element Tools
-- `elements.create`: append elements.
-- `elements.update`: patch elements by id.
-- `elements.delete`: soft/hard delete by ids.
-- `elements.list`: list/filter elements.
-- `elements.arrange`: deterministic align/distribute/stack/grid transforms for AI-friendly layout cleanup.
 
-## Connector Tools
-- `connectors.create`: create a bound connector between two nodes with optional label text.
+- `elements_create`
+- `elements_update`
+- `elements_delete`
+- `elements_list`
+- `elements_arrange`
+
+`elements_arrange` is dependency-aware by default, so grouped semantic children, bound labels, and container text move with the selected roots.
+
+## Higher-Level Authoring Tools
+
+- `frames_create`
+- `frames_assign_elements`
+- `styles_apply_preset`
+- `layers_reorder`
+- `nodes_create`
+- `nodes_compose`
+- `layout_flow`
+- `layout_swimlanes`
+- `layout_polish`
+- `connectors_create`
+
+### `nodes_compose`
+
+Creates semantic nodes with:
+
+- container
+- title text
+- optional body text
+- optional icon slot
+- optional image slot
+- fixed padding and auto-height growth
+
+Prefer this over hand-assembling rectangles and text whenever you want polished programmatic output.
+
+### `layout_swimlanes`
+
+Creates or updates swimlane frames with:
+
+- lane frames
+- lane headers
+- optional element assignment into frames
+- deterministic lane-local layout
+
+Prefer this over manual frame creation when the scene has owners, stages, departments, or lanes.
+
+### `layout_polish`
+
+Applies safe deterministic cleanup for:
+
+- overlap reduction
+- density expansion
+- off-canvas recovery
+- connector label recentering
+- title/legend rebalance when those elements already exist
+
+Run this after `scene_analyze` and before `scene_validate`.
 
 ## App State Tools
-- `appstate.get`: fetch app state.
-- `appstate.patch`: merge/replace app state.
+
+- `appstate_get`
+- `appstate_patch`
 
 ## File Tools
-- `files.attach`: add base64 file to scene.
-- `files.detach`: remove file from scene.
+
+- `files_attach`
+- `files_detach`
+
+File attach now deduplicates by decoded binary bytes, not raw data URL text.
 
 ## Library Tools
-- `library.get`: read scene library items.
-- `library.update`: merge/replace library items.
-- `library.import_json`: import `.excalidrawlib` payloads into scene library state.
 
-## Diagram/View Tools
-- `diagram.from_mermaid`: convert Mermaid and merge/create scene.
-- `view.fit_to_content`: set viewport to visible bounds.
-- `view.scroll_to_content`: center viewport on content.
+- `library_get`
+- `library_update`
+- `library_import_json`
+
+## Diagram / View Tools
+
+- `diagram_from_mermaid`
+- `view_fit_to_content`
+- `view_scroll_to_content`
 
 ## Export Tools
-- `export.svg`
-- `export.png`
-- `export.webp`
-- `export.json`
+
+- `export_svg`
+- `export_png`
+- `export_webp`
+- `export_json`
+
+Rendered export now uses a local Excalidraw runtime bundle and validates `scale` instead of silently ignoring it.
 
 ## Account-Linking Tools
-- `account.login_session`
-- `account.import_scene`
-- `account.import_library`
-- `account.link_status`
 
-## Session / Health
-- `session.reset`: clear active scene binding for caller session.
-- `health.ping`: service/browser health snapshot.
+- `account_login_session`
+- `account_import_scene`
+- `account_import_library`
+- `account_link_status`
 
----
+Account results include `reasonCode` values such as:
 
-## Built-in Quality Guardrails
-For mutation tools, normalization now auto-applies diagram quality fixes:
-- connectors (`arrow`/`line`) are auto-bound when endpoints or explicit hints indicate source/target nodes
-- overflow text inside containerized text elements is wrapped to fit container width
+- `READY`
+- `AUTH_NOT_READY`
+- `IMPORTED`
+- `IMPORT_STRATEGY_FAILED`
+- `POST_IMPORT_VERIFICATION_FAILED`
 
-This runs through the same normalization path used by scene create/patch/update flows.
+## Session / Health Tools
 
----
+- `session_reset`
+- `health_ping`
 
-## Account Tool Usage Examples
+## Style Presets
 
-### 1) Prepare authenticated session
-```json
-{
-  "name": "account.login_session",
-  "arguments": {
-    "destination": "plus",
-    "mode": "headed",
-    "session": "duhman-main",
-    "timeoutSec": 300,
-    "closeOnComplete": false
-  }
-}
-```
+Available preset names:
 
-### 2) Import active scene into account
-```json
-{
-  "name": "account.import_scene",
-  "arguments": {
-    "destination": "plus",
-    "mode": "headed",
-    "session": "duhman-main",
-    "allowInteractiveLogin": false,
-    "timeoutSec": 180
-  }
-}
-```
+- `process`
+- `decision`
+- `note`
+- `title`
+- `legend`
+- `accent`
+- `swimlane`
+- `boundary`
+- `supporting_text`
 
-### 3) Inspect session/link status
-```json
-{
-  "name": "account.link_status",
-  "arguments": {
-    "session": "duhman-main"
-  }
-}
-```
+## Quality Issue Codes
+
+Current issue codes emitted by validation/analysis:
+
+- `CONNECTOR_UNBOUND`
+- `CONNECTOR_CROSSING`
+- `CONTAINER_MISSING`
+- `CONTAINER_TEXT_UNBOUND`
+- `DENSE_CLUSTER`
+- `ELEMENT_OFF_CANVAS`
+- `ELEMENT_OVERLAP`
+- `FRAME_TARGET_MISSING`
+- `GEOMETRY_INVALID`
+- `IMAGE_FILE_MISSING`
+- `MISSING_LEGEND`
+- `MISSING_TITLE`
+- `TEXT_OVERFLOW`
+- `TEXT_UNREADABLE`
+- `TYPOGRAPHY_INCONSISTENT`
 
 ## Resource URIs
+
 - `excalidraw://scenes`
 - `excalidraw://scene/{sceneId}/summary`
+- `excalidraw://scene/{sceneId}/analysis`
 - `excalidraw://scene/{sceneId}/json`
 - `excalidraw://scene/{sceneId}/elements`
 - `excalidraw://scene/{sceneId}/app-state`
 - `excalidraw://scene/{sceneId}/library`
 - `excalidraw://scene/{sceneId}/files`
 
-## Prompts
+## Prompt Catalog
+
+- `agent-workflow-guide`
 - `diagram-from-spec`
 - `refine-layout`
 - `convert-notes-to-scene`
 - `scene-review-checklist`
+
+## Suggested Agent Cookbook
+
+Preferred deterministic loop:
+
+1. `scene_analyze`
+2. apply `scene_normalize` if structural issues exist
+3. use higher-level helpers:
+   `nodes_compose`, `layout_swimlanes`, `layout_flow`, `layout_polish`, `styles_apply_preset`
+4. `scene_validate`
+5. export
+
+Worked examples are easiest to inspect in:
+
+- `scripts/demo-sales-process-board.mjs`
+- `test/integration/visualFixtures.ts`
+- `docs/AGENT_PLAYBOOK.md`

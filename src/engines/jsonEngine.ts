@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { convertToExcalidrawElements } from "../excalidraw/native/excalidrawNodeApi.bundle.js";
 import type { SceneEnvelope, ScenePatchOperation } from "../types/contracts.js";
 import { computeRevisionHash, normalizeElements, normalizeScene } from "../domain/validators.js";
 import { AppError } from "../utils/errors.js";
@@ -32,34 +33,14 @@ export class JsonEngine {
   }
 
   createElementsFromSkeleton(skeletons: any[]): any[] {
-    return skeletons.map((skeleton) => ({
+    const input = skeletons.map((skeleton) => ({
       id: typeof skeleton.id === "string" ? skeleton.id : randomUUID(),
-      type: typeof skeleton.type === "string" ? skeleton.type : "rectangle",
-      x: Number(skeleton.x ?? 0),
-      y: Number(skeleton.y ?? 0),
-      width: Number(skeleton.width ?? 120),
-      height: Number(skeleton.height ?? 80),
-      angle: Number(skeleton.angle ?? 0),
-      strokeColor: skeleton.strokeColor ?? "#1e1e1e",
-      backgroundColor: skeleton.backgroundColor ?? "transparent",
-      fillStyle: skeleton.fillStyle ?? "hachure",
-      strokeWidth: Number(skeleton.strokeWidth ?? 1),
-      strokeStyle: skeleton.strokeStyle ?? "solid",
-      roughness: Number(skeleton.roughness ?? 1),
-      opacity: Number(skeleton.opacity ?? 100),
-      groupIds: Array.isArray(skeleton.groupIds) ? skeleton.groupIds : [],
-      frameId: skeleton.frameId ?? null,
-      roundness: skeleton.roundness ?? null,
-      seed: Number(skeleton.seed ?? Math.floor(Math.random() * 1000000)),
-      version: Number(skeleton.version ?? 1),
-      versionNonce: Number(skeleton.versionNonce ?? Math.floor(Math.random() * 1_000_000_000)),
-      isDeleted: Boolean(skeleton.isDeleted),
-      boundElements: Array.isArray(skeleton.boundElements) ? skeleton.boundElements : null,
-      updated: Number(skeleton.updated ?? Date.now()),
-      link: skeleton.link ?? null,
-      locked: Boolean(skeleton.locked),
-      ...skeleton
+      ...skeleton,
     }));
+
+    return convertToExcalidrawElements(input as any, {
+      regenerateIds: false,
+    }) as any[];
   }
 
   fitToContent(scene: SceneEnvelope): SceneEnvelope {

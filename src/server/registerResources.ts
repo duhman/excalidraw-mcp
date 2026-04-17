@@ -97,6 +97,22 @@ export function registerResources(server: McpServer, sceneService: SceneService)
   );
 
   makeSceneTemplate(
+    "scene-analysis",
+    "excalidraw://scene/{sceneId}/analysis",
+    "Scene quality analysis with diagnostics, scoring, and summary metrics",
+    async (sceneId) => {
+      const analysis = await sceneService.analyzeScene(sceneId);
+      return {
+        sceneId,
+        score: analysis.score,
+        summary: analysis.summary,
+        issues: analysis.issues,
+        recommendedActions: analysis.recommendedActions,
+      };
+    },
+  );
+
+  makeSceneTemplate(
     "scene-json",
     "excalidraw://scene/{sceneId}/json",
     "Complete Excalidraw scene payload",
