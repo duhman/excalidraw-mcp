@@ -34,32 +34,128 @@ const layerDirectionSchema = z.enum([
   "back",
 ]);
 const nodeShapeSchema = z.enum(["rectangle", "ellipse", "diamond"]);
+const elementTypeSchema = z.enum([
+  "rectangle",
+  "diamond",
+  "ellipse",
+  "line",
+  "arrow",
+  "text",
+  "image",
+  "freedraw",
+  "embeddable",
+  "iframe",
+  "frame",
+  "magicframe",
+]);
+const arrowheadSchema = z.enum([
+  "arrow",
+  "bar",
+  "dot",
+  "circle",
+  "circle_outline",
+  "triangle",
+  "triangle_outline",
+  "diamond",
+  "diamond_outline",
+  "crowfoot_one",
+  "crowfoot_many",
+  "crowfoot_one_or_many",
+]);
+const pointSchema = z.tuple([z.number(), z.number()]);
+const elementSkeletonSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    type: elementTypeSchema,
+    x: z.number().optional(),
+    y: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    text: z.string().optional(),
+    fileId: z.string().min(1).optional(),
+    children: z.array(z.string().min(1)).optional(),
+    name: z.string().nullable().optional(),
+    link: z.string().nullable().optional(),
+    locked: z.boolean().optional(),
+    groupIds: z.array(z.string().min(1)).optional(),
+    frameId: z.string().nullable().optional(),
+    customData: z.record(z.string(), z.unknown()).optional(),
+    points: z.array(pointSchema).optional(),
+    pressures: z.array(z.number()).optional(),
+    startArrowhead: arrowheadSchema.nullable().optional(),
+    endArrowhead: arrowheadSchema.nullable().optional(),
+    start: z.record(z.string(), z.unknown()).optional(),
+    end: z.record(z.string(), z.unknown()).optional(),
+    label: z.record(z.string(), z.unknown()).optional(),
+    crop: z
+      .object({
+        x: z.number(),
+        y: z.number(),
+        width: z.number(),
+        height: z.number(),
+        naturalWidth: z.number(),
+        naturalHeight: z.number(),
+      })
+      .nullable()
+      .optional(),
+    scale: z.tuple([z.number(), z.number()]).optional(),
+    status: z.enum(["pending", "saved", "error"]).optional(),
+    fillStyle: z.enum(["hachure", "cross-hatch", "solid", "zigzag"]).optional(),
+    strokeStyle: z.enum(["solid", "dashed", "dotted"]).optional(),
+    strokeColor: z.string().optional(),
+    backgroundColor: z.string().optional(),
+    strokeWidth: z.number().optional(),
+    roughness: z.number().optional(),
+    roundness: z
+      .object({
+        type: z.number(),
+        value: z.number().optional(),
+      })
+      .nullable()
+      .optional(),
+    opacity: z.number().optional(),
+    fontFamily: z.number().optional(),
+    fontSize: z.number().optional(),
+    textAlign: z.enum(["left", "center", "right"]).optional(),
+    verticalAlign: z.enum(["top", "middle", "bottom"]).optional(),
+  })
+  .passthrough();
 
 function success(data: Record<string, unknown>, text: string) {
+  const envelope = {
+    ok: true,
+    data,
+  };
   return {
-    content: [{ type: "text" as const, text }],
-    structuredContent: {
-      ok: true,
-      data,
-    },
+    content: [
+      {
+        type: "text" as const,
+        text: `${text}\n\n${JSON.stringify(envelope, null, 2)}`,
+      },
+    ],
+    structuredContent: envelope,
   };
 }
 
 function failure(error: unknown) {
   const appError = asAppError(error);
+  const envelope = {
+    ok: false,
+    error: {
+      code: appError.code,
+      message: appError.message,
+      details: appError.details,
+    },
+  };
   return {
     isError: true,
     content: [
-      { type: "text" as const, text: `${appError.code}: ${appError.message}` },
-    ],
-    structuredContent: {
-      ok: false,
-      error: {
-        code: appError.code,
-        message: appError.message,
-        details: appError.details,
+      {
+        type: "text" as const,
+        text: `${appError.code}: ${appError.message}\n\n${JSON.stringify(envelope, null, 2)}`,
       },
-    },
+    ],
+    structuredContent: envelope,
   };
 }
 
@@ -159,6 +255,12 @@ export function registerTools(
     openWorldHint: false,
   };
   const mutatingAnnotations = {
+    readOnlyHint: false,
+    idempotentHint: false,
+    destructiveHint: false,
+    openWorldHint: false,
+  };
+  const destructiveAnnotations = {
     readOnlyHint: false,
     idempotentHint: false,
     destructiveHint: true,
@@ -448,6 +550,47 @@ export function registerTools(
   );
 
   server.registerTool(
+    "scene_quality_gate",
+    {
+      description:
+        "Read-only release gate for high-quality agent output. Checks score, structural errors, overlaps, crossings, text overflow, title, and legend requirements before export or publishing.",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+        minScore: z.number().min(0).max(100).optional(),
+        requireTitle: z.boolean().optional(),
+        requireLegend: z.boolean().optional(),
+        failOnIssueCodes: z.array(z.string().min(1)).optional(),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (
+      { sceneId, minScore, requireTitle, requireLegend, failOnIssueCodes },
+      extra,
+    ) => {
+      try {
+        const resolvedId = await resolveSceneId(
+          sceneService,
+          getSessionId(extra),
+          sceneId,
+        );
+        const gate = await sceneService.qualityGate(resolvedId, {
+          minScore,
+          requireTitle,
+          requireLegend,
+          failOnIssueCodes,
+        });
+        return success(
+          gate as any,
+          `Quality gate ${gate.passed ? "passed" : "failed"} for ${resolvedId} (score ${gate.analysis.score}, ${gate.failures.length} failures)`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "scene_normalize",
     {
       description:
@@ -508,6 +651,42 @@ export function registerTools(
   );
 
   server.registerTool(
+    "elements_create_skeletons",
+    {
+      description:
+        "Preferred typed low-level creation tool. Create public Excalidraw element skeletons using the official Skeleton API, including shapes, lines/arrows, text, image, freedraw, embeddable, iframe, frame, and magicframe.",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+        skeletons: z.array(elementSkeletonSchema).min(1),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: mutatingAnnotations,
+    },
+    async ({ sceneId, skeletons }, extra) => {
+      try {
+        const resolvedId = await resolveSceneId(
+          sceneService,
+          getSessionId(extra),
+          sceneId,
+        );
+        const result = await sceneService.createElementsFromSkeletons(
+          resolvedId,
+          skeletons,
+        );
+        return success(
+          {
+            scene: result.scene,
+            changedElementIds: result.changedElementIds,
+          },
+          `Created ${result.changedElementIds.length} Excalidraw skeleton elements in ${resolvedId}`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "elements_update",
     {
       description: "Update existing elements by id with partial patches",
@@ -558,7 +737,7 @@ export function registerTools(
         hardDelete: z.boolean().optional(),
       },
       outputSchema: standardOutputSchema,
-      annotations: mutatingAnnotations,
+      annotations: destructiveAnnotations,
     },
     async ({ sceneId, elementIds, hardDelete }, extra) => {
       try {
@@ -678,21 +857,26 @@ export function registerTools(
     "frames_create",
     {
       description:
-        "Create a frame or magic frame region and optionally assign elements into it",
+        "Create a frame or magic frame region and optionally assign official children/elements into it",
       inputSchema: {
         sceneId: sceneIdSchema.optional(),
         frameId: z.string().min(1).optional(),
+        kind: z.enum(["frame", "magicframe"]).optional(),
         name: z.string().min(1).max(256).optional(),
         x: z.number(),
         y: z.number(),
         width: z.number(),
         height: z.number(),
+        children: z.array(z.string().min(1)).optional(),
         elementIds: z.array(z.string().min(1)).optional(),
       },
       outputSchema: standardOutputSchema,
       annotations: mutatingAnnotations,
     },
-    async ({ sceneId, frameId, name, x, y, width, height, elementIds }, extra) => {
+    async (
+      { sceneId, frameId, kind, name, x, y, width, height, children, elementIds },
+      extra,
+    ) => {
       try {
         const resolvedId = await resolveSceneId(
           sceneService,
@@ -701,11 +885,13 @@ export function registerTools(
         );
         const result = await sceneService.createFrame(resolvedId, {
           frameId,
+          kind,
           name,
           x,
           y,
           width,
           height,
+          children,
           elementIds,
         });
         return success(
@@ -1086,6 +1272,80 @@ export function registerTools(
   );
 
   server.registerTool(
+    "diagram_compose",
+    {
+      description:
+        "High-level agent composer for polished diagrams from a semantic spec. Creates title, nodes, edges, optional frames/lanes, legend, deterministic polish, validation, and quality-gate output.",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+        title: z.string().min(1),
+        diagramType: z.enum(["flow", "swimlane", "architecture", "board"]).optional(),
+        stylePreset: stylePresetSchema.optional(),
+        qualityTarget: z.number().min(0).max(100).optional(),
+        nodes: z
+          .array(
+            z.object({
+              id: z.string().min(1).optional(),
+              title: z.string().min(1),
+              body: z.string().optional(),
+              laneId: z.string().min(1).optional(),
+              frameId: z.string().min(1).optional(),
+              iconText: z.string().optional(),
+              imageFileId: z.string().min(1).optional(),
+            }),
+          )
+          .min(1),
+        edges: z
+          .array(
+            z.object({
+              source: z.string().min(1),
+              target: z.string().min(1),
+              label: z.string().optional(),
+              connectorType: z.enum(["arrow", "line"]).optional(),
+            }),
+          )
+          .optional(),
+        frames: z
+          .array(
+            z.object({
+              id: z.string().min(1).optional(),
+              title: z.string().min(1),
+              kind: z.enum(["frame", "magicframe"]).optional(),
+              nodeIds: z.array(z.string().min(1)).optional(),
+            }),
+          )
+          .optional(),
+        lanes: z
+          .array(
+            z.object({
+              id: z.string().min(1).optional(),
+              label: z.string().min(1),
+              nodeIds: z.array(z.string().min(1)).optional(),
+            }),
+          )
+          .optional(),
+        legend: z.string().optional(),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: mutatingAnnotations,
+    },
+    async (args, extra) => {
+      try {
+        const result = await sceneService.composeDiagram({
+          ...args,
+          openInSessionId: getSessionId(extra),
+        });
+        return success(
+          result as any,
+          `Composed diagram ${result.scene.metadata.sceneId} (quality ${result.qualityGate.analysis.score}, gate ${result.qualityGate.passed ? "passed" : "failed"})`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "connectors_create",
     {
       description:
@@ -1096,10 +1356,9 @@ export function registerTools(
         targetElementId: z.string().min(1),
         label: z.string().optional(),
         connectorType: z.enum(["arrow", "line"]).optional(),
-        endArrowhead: z
-          .enum(["arrow", "triangle", "bar", "dot"])
-          .nullable()
-          .optional(),
+        startArrowhead: arrowheadSchema.nullable().optional(),
+        endArrowhead: arrowheadSchema.nullable().optional(),
+        points: z.array(pointSchema).min(2).optional(),
         strokeStyle: z.enum(["solid", "dashed", "dotted"]).optional(),
         strokeColor: z.string().optional(),
       },
@@ -1113,7 +1372,9 @@ export function registerTools(
         targetElementId,
         label,
         connectorType,
+        startArrowhead,
         endArrowhead,
+        points,
         strokeStyle,
         strokeColor,
       },
@@ -1130,7 +1391,9 @@ export function registerTools(
           targetElementId,
           label,
           connectorType,
+          startArrowhead,
           endArrowhead,
+          points,
           strokeStyle,
           strokeColor,
         });
@@ -1216,11 +1479,12 @@ export function registerTools(
         fileId: z.string().optional(),
         mimeType: z.string().min(1),
         base64: z.string().min(1),
+        metadata: z.record(z.string(), z.unknown()).optional(),
       },
       outputSchema: standardOutputSchema,
       annotations: mutatingAnnotations,
     },
-    async ({ sceneId, fileId, mimeType, base64 }, extra) => {
+    async ({ sceneId, fileId, mimeType, base64, metadata }, extra) => {
       try {
         const resolvedId = await resolveSceneId(
           sceneService,
@@ -1231,6 +1495,7 @@ export function registerTools(
           fileId,
           mimeType,
           base64,
+          metadata,
         });
         return success(
           result as any,
@@ -1589,7 +1854,7 @@ export function registerTools(
         closeOnComplete: z.boolean().optional(),
       },
       outputSchema: standardOutputSchema,
-      annotations: mutatingAnnotations,
+      annotations: destructiveAnnotations,
     },
     async ({ destination, mode, session, timeoutSec, closeOnComplete }) => {
       try {
@@ -1626,7 +1891,7 @@ export function registerTools(
         closeOnComplete: z.boolean().optional(),
       },
       outputSchema: standardOutputSchema,
-      annotations: mutatingAnnotations,
+      annotations: destructiveAnnotations,
     },
     async (
       {
@@ -1695,7 +1960,7 @@ export function registerTools(
         closeOnComplete: z.boolean().optional(),
       },
       outputSchema: standardOutputSchema,
-      annotations: mutatingAnnotations,
+      annotations: destructiveAnnotations,
     },
     async (
       {

@@ -12,7 +12,12 @@ export function registerResources(server: McpServer, sceneService: SceneService)
     {
       title: "Scene Index",
       description: "List of available Excalidraw scenes",
-      mimeType: "application/json"
+      mimeType: "application/json",
+      annotations: {
+        audience: ["assistant"],
+        priority: 0.7,
+        lastModified: new Date().toISOString(),
+      },
     },
     async () => {
       const scenes = await sceneService.listScenes();
@@ -49,7 +54,12 @@ export function registerResources(server: McpServer, sceneService: SceneService)
       }),
       {
         description,
-        mimeType: "application/json"
+        mimeType: "application/json",
+        annotations: {
+          audience: ["assistant"],
+          priority: name === "scene-json" ? 0.4 : 0.8,
+          lastModified: new Date().toISOString(),
+        },
       },
       async (uri, variables) => {
         const sceneId = String(variables.sceneId ?? "");

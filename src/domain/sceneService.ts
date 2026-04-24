@@ -10,7 +10,10 @@ import type {
   ScenePatchOperation,
 } from "../types/contracts.js";
 import { AppError } from "../utils/errors.js";
-import { analyzeDiagram, type DiagramAnalysisResult } from "./diagramQuality.js";
+import {
+  analyzeDiagram,
+  type DiagramAnalysisResult,
+} from "./diagramQuality.js";
 import {
   FRAME_PADDING,
   NODE_PADDING,
@@ -27,6 +30,20 @@ type ArrangeMode = "align" | "distribute" | "stack" | "grid";
 type ArrangeAxis = "x" | "y" | "both";
 type ArrangeAnchor = "min" | "center" | "max";
 type LayerDirection = "forward" | "backward" | "front" | "back";
+type FrameKind = "frame" | "magicframe";
+type Arrowhead =
+  | "arrow"
+  | "bar"
+  | "dot"
+  | "circle"
+  | "circle_outline"
+  | "triangle"
+  | "triangle_outline"
+  | "diamond"
+  | "diamond_outline"
+  | "crowfoot_one"
+  | "crowfoot_many"
+  | "crowfoot_one_or_many";
 
 let mermaidParserModulePromise:
   | Promise<typeof import("@excalidraw/mermaid-to-excalidraw")>
@@ -593,6 +610,31 @@ export class SceneService {
     });
   }
 
+  async createElementsFromSkeletons(
+    sceneId: string,
+    skeletons: any[],
+  ): Promise<{ scene: SceneEnvelope; changedElementIds: string[] }> {
+    const scene = await this.store.load(sceneId);
+    const missingFileIds = skeletons
+      .filter((skeleton) => skeleton?.type === "image" && skeleton.fileId)
+      .map((skeleton) => String(skeleton.fileId))
+      .filter((fileId) => !scene.files[fileId]);
+
+    if (missingFileIds.length > 0) {
+      throw new AppError("BAD_REQUEST", "Image skeleton references missing files", 400, {
+        sceneId,
+        fileIds: missingFileIds,
+      });
+    }
+
+    return this.patchScene(sceneId, [
+      {
+        op: "addElements",
+        elements: skeletons,
+      },
+    ] as any);
+  }
+
   async analyzeScene(sceneId: string): Promise<DiagramAnalysisResult> {
     const scene = await this.store.load(sceneId);
     return analyzeDiagram(scene);
@@ -639,6 +681,104 @@ export class SceneService {
       qualityScore: analysis.score,
       summary: analysis.summary,
       revisionHash: scene.metadata.revisionHash,
+    };
+  }
+
+  async qualityGate(
+    sceneId: string,
+    input: {
+      minScore?: number;
+      requireTitle?: boolean;
+      requireLegend?: boolean;
+      failOnIssueCodes?: string[];
+    } = {},
+  ): Promise<{
+    passed: boolean;
+    failures: Array<{
+      code: string;
+      message: string;
+      severity?: string;
+      elementId?: string;
+      details?: Record<string, unknown>;
+    }>;
+    analysis: DiagramAnalysisResult;
+    validation: Awaited<ReturnType<SceneService["validateScene"]>>;
+    thresholds: {
+      minScore: number;
+      requireTitle: boolean;
+      requireLegend: boolean;
+      failOnIssueCodes: string[];
+    };
+  }> {
+    const scene = await this.store.load(sceneId);
+    const analysis = analyzeDiagram(scene);
+    const validation = await this.validateScene(sceneId);
+    const minScore = input.minScore ?? 90;
+    const visibleCount = analysis.summary.visibleElementCount;
+    const requireTitle = input.requireTitle ?? visibleCount > 0;
+    const hasMultipleBackgrounds =
+      new Set(
+        scene.elements
+          .filter((element) => !element.isDeleted)
+          .map((element) => String(element.backgroundColor ?? ""))
+          .filter((color) => color && color !== "transparent"),
+      ).size > 2;
+    const requireLegend =
+      input.requireLegend ??
+      (analysis.summary.graph.connectorCount >= 2 || hasMultipleBackgrounds);
+    const failOnIssueCodes = [
+      "ELEMENT_OVERLAP",
+      "CONNECTOR_CROSSING",
+      "TEXT_OVERFLOW",
+      ...(input.failOnIssueCodes ?? []),
+    ];
+    const failCodeSet = new Set(failOnIssueCodes);
+    const failures: Array<{
+      code: string;
+      message: string;
+      severity?: string;
+      elementId?: string;
+      details?: Record<string, unknown>;
+    }> = [];
+
+    if (analysis.score < minScore) {
+      failures.push({
+        code: "QUALITY_SCORE_BELOW_TARGET",
+        message: `Scene score ${analysis.score} is below required ${minScore}`,
+        details: { score: analysis.score, minScore },
+      });
+    }
+
+    for (const issue of analysis.issues) {
+      if (
+        issue.severity === "error" ||
+        failCodeSet.has(issue.code) ||
+        (requireTitle && issue.code === "MISSING_TITLE") ||
+        (requireLegend && issue.code === "MISSING_LEGEND")
+      ) {
+        failures.push(issue);
+      }
+    }
+
+    for (const issue of validation.issues) {
+      failures.push({
+        code: "VALIDATION_ERROR",
+        message: issue,
+        severity: "error",
+      });
+    }
+
+    return {
+      passed: failures.length === 0,
+      failures,
+      analysis,
+      validation,
+      thresholds: {
+        minScore,
+        requireTitle,
+        requireLegend,
+        failOnIssueCodes,
+      },
     };
   }
 
@@ -696,7 +836,12 @@ export class SceneService {
 
   async attachFile(
     sceneId: string,
-    input: { fileId?: string; mimeType: string; base64: string },
+    input: {
+      fileId?: string;
+      mimeType: string;
+      base64: string;
+      metadata?: Record<string, unknown>;
+    },
   ): Promise<{ fileId: string; deduplicated: boolean; sizeBytes: number }> {
     const buffer = Buffer.from(input.base64, "base64");
     if (buffer.byteLength > MAX_FILE_BYTES) {
@@ -729,6 +874,7 @@ export class SceneService {
       const fileId = input.fileId ?? uuidv4();
       const dataURL = `data:${input.mimeType};base64,${input.base64}`;
       const nextFile = {
+        ...(input.metadata ?? {}),
         id: fileId,
         mimeType: input.mimeType,
         dataURL,
@@ -1128,7 +1274,9 @@ export class SceneService {
       targetElementId: string;
       label?: string;
       connectorType?: "arrow" | "line";
-      endArrowhead?: "arrow" | "triangle" | "bar" | "dot" | null;
+      startArrowhead?: Arrowhead | null;
+      endArrowhead?: Arrowhead | null;
+      points?: Array<[number, number]>;
       strokeStyle?: "solid" | "dashed" | "dotted";
       strokeColor?: string;
     },
@@ -1162,9 +1310,14 @@ export class SceneService {
         y: layout.startY,
         width: layout.endX - layout.startX,
         height: layout.endY - layout.startY,
-        points: [[0, 0], [layout.endX - layout.startX, layout.endY - layout.startY]],
+        points: input.points ?? [
+          [0, 0],
+          [layout.endX - layout.startX, layout.endY - layout.startY],
+        ],
         startBinding: layout.startBinding,
         endBinding: layout.endBinding,
+        startArrowhead:
+          input.connectorType === "line" ? null : input.startArrowhead ?? null,
         endArrowhead:
           input.connectorType === "line" ? null : input.endArrowhead ?? "arrow",
         strokeStyle: input.strokeStyle ?? "solid",
@@ -1209,20 +1362,23 @@ export class SceneService {
     sceneId: string,
     input: {
       frameId?: string;
+      kind?: FrameKind;
       name?: string;
       x: number;
       y: number;
       width: number;
       height: number;
+      children?: string[];
       elementIds?: string[];
     },
   ): Promise<{ scene: SceneEnvelope; frameId: string; changedElementIds: string[] }> {
     return this.withSceneLock(sceneId, async () => {
       const scene = await this.store.load(sceneId);
       const frameId = input.frameId ?? uuidv4();
+      const kind = input.kind ?? "frame";
       const frame = {
         id: frameId,
-        type: "frame",
+        type: kind,
         x: input.x,
         y: input.y,
         width: input.width,
@@ -1231,7 +1387,7 @@ export class SceneService {
         seed: seedFromId(frameId),
       };
 
-      const elementIds = new Set(input.elementIds ?? []);
+      const elementIds = new Set([...(input.children ?? []), ...(input.elementIds ?? [])]);
       const elements = [...scene.elements.map((element) => ({ ...element })), frame];
       for (const element of elements) {
         if (elementIds.has(element.id)) {
@@ -2196,6 +2352,223 @@ export class SceneService {
     return {
       scene,
       changedElementIds: [...changedElementIds].sort(),
+    };
+  }
+
+  async composeDiagram(input: {
+    sceneId?: string;
+    title: string;
+    diagramType?: "flow" | "swimlane" | "architecture" | "board";
+    stylePreset?: StylePreset;
+    qualityTarget?: number;
+    nodes: Array<{
+      id?: string;
+      title: string;
+      body?: string;
+      laneId?: string;
+      frameId?: string;
+      iconText?: string;
+      imageFileId?: string;
+    }>;
+    edges?: Array<{
+      source: string;
+      target: string;
+      label?: string;
+      connectorType?: "arrow" | "line";
+    }>;
+    frames?: Array<{
+      id?: string;
+      title: string;
+      kind?: FrameKind;
+      nodeIds?: string[];
+    }>;
+    lanes?: Array<{
+      id?: string;
+      label: string;
+      nodeIds?: string[];
+    }>;
+    legend?: string;
+    openInSessionId?: string;
+  }): Promise<{
+    scene: SceneEnvelope;
+    nodeIds: string[];
+    connectorIds: string[];
+    validation: Awaited<ReturnType<SceneService["validateScene"]>>;
+    qualityGate: Awaited<ReturnType<SceneService["qualityGate"]>>;
+  }> {
+    const sceneId = input.sceneId ?? uuidv4();
+    const stylePreset = input.stylePreset ?? "process";
+    const existing = await this.store.exists(sceneId);
+
+    if (!existing) {
+      await this.createScene({ sceneId, name: input.title });
+    } else {
+      await this.patchScene(sceneId, [{ op: "setName", name: input.title }]);
+    }
+
+    if (input.openInSessionId) {
+      this.sessionActiveScene.set(input.openInSessionId, sceneId);
+    }
+
+    const nodeIds = input.nodes.map((node) => node.id ?? uuidv4());
+    const titleId = `${sceneId}-title`;
+    await this.createElementsFromSkeletons(sceneId, [
+      {
+        id: titleId,
+        type: "text",
+        x: 48,
+        y: 32,
+        text: input.title,
+        fontSize: TEXT_SCALE.display,
+        fontFamily: 1,
+        customData: { semanticRole: "scene-title" },
+      },
+    ]);
+    await this.applyStylePreset(sceneId, {
+      elementIds: [titleId],
+      preset: "title",
+      includeDependents: false,
+    });
+
+    const columns =
+      input.diagramType === "architecture" || input.diagramType === "board"
+        ? Math.ceil(Math.sqrt(input.nodes.length))
+        : input.nodes.length;
+    const composed = await this.composeNodes(sceneId, {
+      preset: stylePreset,
+      nodes: input.nodes.map((node, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        return {
+          nodeId: nodeIds[index],
+          x: 80 + column * 280,
+          y: 140 + row * 180,
+          width: 220,
+          minHeight: 120,
+          title: node.title,
+          body: node.body,
+          iconText: node.iconText,
+          imageFileId: node.imageFileId,
+          frameId: node.frameId,
+        };
+      }),
+    });
+    let scene = composed.scene;
+
+    if (input.lanes && input.lanes.length > 0) {
+      const lanes = input.lanes.map((lane, index) => ({
+        laneId: lane.id ?? `lane-${index + 1}`,
+        label: lane.label,
+        elementIds:
+          lane.nodeIds ??
+          input.nodes
+            .map((node, nodeIndex) =>
+              node.laneId === lane.id || node.laneId === lane.label
+                ? nodeIds[nodeIndex]
+                : null,
+            )
+            .filter((id): id is string => Boolean(id)),
+      }));
+      const laneLayout = await this.layoutSwimlanes(sceneId, {
+        laneArrangement: "columns",
+        originX: 48,
+        originY: 104,
+        laneWidth: 280,
+        laneHeight: Math.max(260, 160 + input.nodes.length * 16),
+        lanes,
+      });
+      scene = laneLayout.scene;
+    } else if (input.frames && input.frames.length > 0) {
+      for (let index = 0; index < input.frames.length; index += 1) {
+        const frame = input.frames[index]!;
+        const frameId = frame.id ?? `frame-${index + 1}`;
+        const children = frame.nodeIds ?? nodeIds;
+        const frameX = 48 + index * 360;
+        await this.createFrame(sceneId, {
+          frameId,
+          kind: frame.kind,
+          name: frame.title,
+          x: frameX,
+          y: 104,
+          width: 320,
+          height: 300,
+          children,
+        });
+      }
+      scene = await this.getScene(sceneId);
+    } else if (nodeIds.length > 1) {
+      const flow = await this.layoutFlow(sceneId, {
+        elementIds: nodeIds,
+        direction: "horizontal",
+        gap: 80,
+        connect: false,
+        preset: stylePreset,
+      });
+      scene = flow.scene;
+    }
+
+    const connectorIds: string[] = [];
+    const edges: Array<{
+      source: string;
+      target: string;
+      label?: string;
+      connectorType?: "arrow" | "line";
+    }> =
+      input.edges ??
+      nodeIds.slice(0, -1).map((source, index) => ({
+        source,
+        target: nodeIds[index + 1]!,
+      }));
+    for (const edge of edges) {
+      const connector = await this.createConnector(sceneId, {
+        sourceElementId: edge.source,
+        targetElementId: edge.target,
+        label: edge.label,
+        connectorType: edge.connectorType,
+      });
+      connectorIds.push(connector.connectorId);
+      scene = connector.scene;
+    }
+
+    const legend =
+      input.legend ??
+      (connectorIds.length > 0 ? "Legend: arrows show relationships or flow" : undefined);
+    if (legend) {
+      const bounds = analyzeDiagram(scene).summary.bounds;
+      const legendId = `${sceneId}-legend`;
+      await this.createElementsFromSkeletons(sceneId, [
+        {
+          id: legendId,
+          type: "text",
+          x: bounds?.x ?? 48,
+          y: bounds ? bounds.y + bounds.height + SPACING_SCALE.sm : 520,
+          text: legend,
+          fontSize: TEXT_SCALE.supporting,
+          fontFamily: 1,
+          customData: { semanticRole: "scene-legend" },
+        },
+      ]);
+      await this.applyStylePreset(sceneId, {
+        elementIds: [legendId],
+        preset: "legend",
+        includeDependents: false,
+      });
+      scene = await this.getScene(sceneId);
+    }
+
+    await this.layoutPolish(sceneId, { mode: "safe" });
+    scene = await this.fitToContent(sceneId);
+    const validation = await this.validateScene(sceneId);
+    const qualityGate = await this.qualityGate(sceneId, {
+      minScore: input.qualityTarget ?? 90,
+    });
+
+    return {
+      scene,
+      nodeIds,
+      connectorIds,
+      validation,
+      qualityGate,
     };
   }
 

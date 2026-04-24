@@ -15,6 +15,7 @@ The goal is not just to mutate scene JSON. The server gives agents a safer abstr
 
 - Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Tool reference: [`docs/TOOL_REFERENCE.md`](docs/TOOL_REFERENCE.md)
+- Capability matrix: [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md)
 - Agent playbook: [`docs/AGENT_PLAYBOOK.md`](docs/AGENT_PLAYBOOK.md)
 - Account linking: [`docs/ACCOUNT_LINKING.md`](docs/ACCOUNT_LINKING.md)
 
@@ -27,6 +28,8 @@ The goal is not just to mutate scene JSON. The server gives agents a safer abstr
   - `layout_swimlanes`
   - `layout_polish`
 - Higher-level authoring helpers:
+  - `diagram_compose`
+  - `elements_create_skeletons`
   - `nodes_create`
   - `nodes_compose`
   - `frames_create`
@@ -37,6 +40,7 @@ The goal is not just to mutate scene JSON. The server gives agents a safer abstr
   - `scene_validate`
   - `scene_normalize`
   - `scene_analyze`
+  - `scene_quality_gate`
 - Resources including:
   - `excalidraw://scenes`
   - `excalidraw://scene/{sceneId}/summary`
@@ -52,7 +56,8 @@ Recommended loop for agents:
 2. Deterministic helpers:
    `nodes_compose`, `layout_swimlanes`, `layout_flow`, `layout_polish`, `styles_apply_preset`, `frames_assign_elements`
 3. `scene_validate`
-4. `export_svg` / `export_png` / `export_webp`
+4. `scene_quality_gate`
+5. `export_svg` / `export_png` / `export_webp`
 
 Use `scene_normalize` first whenever analysis shows structural issues such as broken bindings, missing container backlinks, missing files, or invalid geometry.
 

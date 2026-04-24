@@ -22,15 +22,17 @@ export function registerPrompts(server: McpServer): void {
               "You are using excalidraw-mcp.",
               "Explain the best tool-selection strategy for producing a high-quality Excalidraw scene.",
               "Preferred operating loop:",
-              "1) scene_analyze",
-              "2) scene_normalize only if structural issues are present",
-              "3) higher-level helpers such as nodes_compose, layout_swimlanes, layout_flow, frames_assign_elements, styles_apply_preset, elements_arrange, and layout_polish",
-              "4) scene_validate",
-              "5) export_svg / export_png / export_webp",
+              "1) diagram_compose for semantic diagrams, or elements_create_skeletons for typed public Excalidraw skeletons",
+              "2) scene_analyze",
+              "3) scene_normalize only if structural issues are present",
+              "4) higher-level helpers such as nodes_compose, layout_swimlanes, layout_flow, frames_assign_elements, styles_apply_preset, elements_arrange, and layout_polish",
+              "5) scene_validate and scene_quality_gate",
+              "6) export_svg / export_png / export_webp",
               "Selection guidance:",
               "- prefer nodes_compose over manual shape + text assembly when semantic cards or blocks are needed",
               "- prefer layout_swimlanes over manually creating lane frames and headers",
               "- prefer styles_apply_preset over ad hoc color/font edits",
+              "- prefer elements_create_skeletons over scene_patch when public Excalidraw element parity is needed",
               "- treat scene_patch and exact element updates as last-mile tools",
               "- use recommendedActions from scene_analyze as the default next-step planner",
               "Call out any likely title, legend, spacing, overlap, hierarchy, or connector concerns an agent should watch for.",
@@ -70,7 +72,7 @@ export function registerPrompts(server: McpServer): void {
               "2) Element plan with element type, labels, frames, and coordinates strategy",
               "3) Recommended style presets, title/legend treatment, and spacing scale",
               "4) Mermaid snippet if helpful",
-              "5) Suggested MCP tool call sequence using tools like nodes_compose, layout_swimlanes, layout_flow, frames_create, styles_apply_preset, scene_analyze, layout_polish, and scene_validate",
+              "5) Suggested MCP tool call sequence using tools like diagram_compose, elements_create_skeletons, nodes_compose, layout_swimlanes, layout_flow, frames_create, styles_apply_preset, scene_analyze, layout_polish, scene_validate, and scene_quality_gate",
               targetAudience ? `Audience: ${targetAudience}` : "",
               style ? `Style guidance: ${style}` : "",
               `Requirements:\n${requirements}`
@@ -110,7 +112,7 @@ export function registerPrompts(server: McpServer): void {
               constraints ? `Constraints: ${constraints}` : "",
               `Goals: ${goals}`,
               "Return an ordered list of MCP tool calls.",
-              "Prefer scene_analyze, scene_normalize, layout_polish, elements_arrange, layout_swimlanes, layout_flow, frames_assign_elements, styles_apply_preset, and layers_reorder before exact patch operations.",
+              "Prefer scene_analyze, scene_normalize, layout_polish, scene_quality_gate, elements_arrange, layout_swimlanes, layout_flow, frames_assign_elements, styles_apply_preset, and layers_reorder before exact patch operations.",
               "Include exact patch operations only if deterministic tools cannot finish the refinement."
             ]
               .filter(Boolean)
@@ -147,7 +149,7 @@ export function registerPrompts(server: McpServer): void {
               "- annotations",
               "- suggested style presets",
               "Then include MCP operations to build it using higher-level helpers first.",
-              "Favor nodes_compose, layout_swimlanes, layout_flow, frames_create, frames_assign_elements, connectors_create, styles_apply_preset, and layout_polish.",
+              "Favor diagram_compose for full scenes, or nodes_compose, elements_create_skeletons, layout_swimlanes, layout_flow, frames_create, frames_assign_elements, connectors_create, styles_apply_preset, layout_polish, and scene_quality_gate.",
               `Notes:\n${notes}`
             ]
               .filter(Boolean)
@@ -186,7 +188,7 @@ export function registerPrompts(server: McpServer): void {
               "- frame membership and container-text binding issues",
               focus ? `Focus area: ${focus}` : "",
               "For each finding: include rationale, exact MCP recommendations, and whether the fix should use a deterministic helper or a direct patch.",
-              "When deterministic fixes are available, recommend the loop scene_analyze -> layout_polish / styles_apply_preset / layout_swimlanes -> scene_validate -> export."
+              "When deterministic fixes are available, recommend the loop scene_analyze -> layout_polish / styles_apply_preset / layout_swimlanes -> scene_validate -> scene_quality_gate -> export."
             ]
               .filter(Boolean)
               .join("\n")

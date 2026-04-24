@@ -55,7 +55,7 @@ export async function createExcalidrawMcpServer(
         prompts: { listChanged: true }
       },
       instructions:
-        "Use tools for mutations/exports, resources for read-only context snapshots, and prompts for diagram workflow templates."
+        "Use tools for mutations/exports, resources for read-only context snapshots, and prompts for diagram workflow templates. Prefer diagram_compose or elements_create_skeletons over raw scene_patch for new content, run scene_quality_gate before final exports, and treat scene_validate plus browser export as the release path for high-quality drawings."
     }
   );
 

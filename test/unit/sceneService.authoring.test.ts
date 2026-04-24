@@ -133,6 +133,106 @@ describe("SceneService advanced authoring", () => {
     expect(result.scene.elements.some((element: any) => element.type === "text" && element.containerId === connector.id)).toBe(true);
   });
 
+  it("creates public Excalidraw skeleton element types with rich image and frame fields", async () => {
+    await service.createScene({ sceneId: "skeleton-scene" });
+    const file = await service.attachFile("skeleton-scene", {
+      mimeType: "image/png",
+      base64: Buffer.from("image").toString("base64"),
+      metadata: { source: "unit-test" },
+    });
+
+    const result = await service.createElementsFromSkeletons("skeleton-scene", [
+      { id: "rect", type: "rectangle", x: 0, y: 0, width: 100, height: 60, link: "https://example.com", locked: true },
+      { id: "diamond", type: "diamond", x: 130, y: 0, width: 100, height: 60 },
+      { id: "ellipse", type: "ellipse", x: 260, y: 0, width: 100, height: 60 },
+      { id: "line", type: "line", x: 0, y: 100, points: [[0, 0], [100, 40]] },
+      { id: "arrow", type: "arrow", x: 140, y: 100, points: [[0, 0], [100, 40]], endArrowhead: "crowfoot_many" },
+      { id: "text", type: "text", x: 0, y: 180, text: "Typed text", fontSize: 18, textAlign: "center" },
+      { id: "free", type: "freedraw", x: 260, y: 100, width: 80, height: 40, points: [[0, 0], [20, 10], [80, 40]], pressures: [0.2, 0.5, 0.7], simulatePressure: true },
+      { id: "embed", type: "embeddable", x: 400, y: 0, width: 160, height: 90, link: "https://example.com/embed" },
+      { id: "iframe", type: "iframe", x: 400, y: 120, width: 160, height: 90, link: "https://example.com/frame" },
+      {
+        id: "img",
+        type: "image",
+        x: 600,
+        y: 0,
+        width: 96,
+        height: 64,
+        fileId: file.fileId,
+        status: "saved",
+        scale: [1, -1],
+        crop: { x: 0, y: 0, width: 20, height: 20, naturalWidth: 40, naturalHeight: 40 },
+      },
+      { id: "frame", type: "frame", x: -20, y: -20, width: 420, height: 260, children: ["rect", "diamond"], name: "Frame" },
+      { id: "magic", type: "magicframe", x: 380, y: -20, width: 360, height: 260, children: ["embed", "iframe", "img"], name: "Magic" },
+    ]);
+
+    const byId = Object.fromEntries(result.scene.elements.map((element: any) => [element.id, element]));
+    expect(Object.keys(byId)).toEqual(expect.arrayContaining(["rect", "diamond", "ellipse", "line", "arrow", "text", "free", "embed", "iframe", "img", "frame", "magic"]));
+    expect(byId.rect.locked).toBe(true);
+    expect(byId.img.fileId).toBe(file.fileId);
+    expect(byId.img.crop).toEqual({ x: 0, y: 0, width: 20, height: 20, naturalWidth: 40, naturalHeight: 40 });
+    expect(byId.img.scale).toEqual([1, -1]);
+    expect(byId.frame.type).toBe("frame");
+    expect(byId.magic.type).toBe("magicframe");
+    expect(byId.rect.frameId).toBe("frame");
+    expect(byId.img.frameId).toBe("magic");
+    expect(result.scene.files[file.fileId]?.source).toBe("unit-test");
+  });
+
+  it("supports full public arrowhead values on connectors", async () => {
+    await service.createScene({
+      sceneId: "arrowhead-scene",
+      elements: [
+        { id: "left", type: "rectangle", x: 0, y: 0, width: 160, height: 80 },
+        { id: "right", type: "rectangle", x: 320, y: 0, width: 160, height: 80 },
+      ],
+    });
+
+    const result = await service.createConnector("arrowhead-scene", {
+      sourceElementId: "left",
+      targetElementId: "right",
+      connectorType: "arrow",
+      startArrowhead: "diamond_outline",
+      endArrowhead: "crowfoot_one_or_many",
+      points: [[0, 0], [80, -40], [160, 0]],
+    });
+
+    const connector = result.scene.elements.find((element: any) => element.id === result.connectorId);
+    expect(connector?.startArrowhead).toBe("diamond_outline");
+    expect(connector?.endArrowhead).toBe("crowfoot_one_or_many");
+    expect(connector?.points).toHaveLength(3);
+    expect(connector?.points[1][0]).toBeGreaterThan(79);
+    expect(connector?.points[1][0]).toBeLessThan(81);
+    expect(connector?.points[1][1]).toBeGreaterThan(-41);
+    expect(connector?.points[1][1]).toBeLessThan(-39);
+  });
+
+  it("creates magic frames with official children input", async () => {
+    await service.createScene({
+      sceneId: "magic-frame-scene",
+      elements: [
+        { id: "child", type: "rectangle", x: 40, y: 40, width: 100, height: 60 },
+      ],
+    });
+
+    const result = await service.createFrame("magic-frame-scene", {
+      frameId: "magic-frame",
+      kind: "magicframe",
+      name: "Magic Frame",
+      x: 20,
+      y: 20,
+      width: 180,
+      height: 120,
+      children: ["child"],
+    });
+
+    const frame = result.scene.elements.find((element: any) => element.id === "magic-frame");
+    const child = result.scene.elements.find((element: any) => element.id === "child");
+    expect(frame?.type).toBe("magicframe");
+    expect(child?.frameId).toBe("magic-frame");
+  });
+
   it("composes semantic nodes with wrapped body text, icon slot, image slot, and frame assignment", async () => {
     await service.createScene({ sceneId: "compose-scene" });
     const attached = await service.attachFile("compose-scene", {
@@ -250,6 +350,44 @@ describe("SceneService advanced authoring", () => {
     expect(polished.appliedActions).toContain("resolved_overlaps");
     expect(after.issues.filter((issue) => issue.code === "ELEMENT_OVERLAP").length).toBeLessThan(
       before.issues.filter((issue) => issue.code === "ELEMENT_OVERLAP").length,
+    );
+  });
+
+  it("composes a semantic diagram and reports quality-gate status", async () => {
+    const result = await service.composeDiagram({
+      sceneId: "composed-diagram",
+      title: "Agent Diagram",
+      diagramType: "flow",
+      stylePreset: "process",
+      qualityTarget: 70,
+      nodes: [
+        { id: "start", title: "Start", body: "Collect input" },
+        { id: "finish", title: "Finish", body: "Ship output" },
+      ],
+      edges: [{ source: "start", target: "finish", label: "then" }],
+      legend: "Legend: arrows show sequence",
+    });
+
+    expect(result.scene.metadata.sceneId).toBe("composed-diagram");
+    expect(result.nodeIds).toEqual(["start", "finish"]);
+    expect(result.connectorIds).toHaveLength(1);
+    expect(result.validation.valid).toBe(true);
+    expect(result.qualityGate.passed).toBe(true);
+  });
+
+  it("fails the default quality gate for missing title and low score", async () => {
+    await service.createScene({
+      sceneId: "quality-scene",
+      elements: [
+        { id: "one", type: "rectangle", x: 0, y: 0, width: 100, height: 60 },
+        { id: "two", type: "rectangle", x: 20, y: 20, width: 100, height: 60 },
+      ],
+    });
+
+    const gate = await service.qualityGate("quality-scene");
+    expect(gate.passed).toBe(false);
+    expect(gate.failures.map((failure) => failure.code)).toEqual(
+      expect.arrayContaining(["MISSING_TITLE", "ELEMENT_OVERLAP"]),
     );
   });
 });

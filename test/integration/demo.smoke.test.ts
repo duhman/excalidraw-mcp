@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { access, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
@@ -9,15 +10,19 @@ const execFileAsync = promisify(execFile);
 describe("sales process demo smoke test", () => {
   it("runs the demo script with canonical snake_case MCP tool names", async () => {
     const repoRoot = process.cwd();
-    const outDir = join(repoRoot, "tmp", "generated", "sales-process-overview");
-    await rm(outDir, { recursive: true, force: true });
+    const outDir = await mkdtemp(join(tmpdir(), "excalidraw-mcp-demo-"));
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "excalidraw-mcp-demo-workspace-"));
 
     const { stdout } = await execFileAsync(
       process.execPath,
       ["scripts/demo-sales-process-board.mjs"],
       {
         cwd: repoRoot,
-        env: process.env,
+        env: {
+          ...process.env,
+          DEMO_OUT_DIR: outDir,
+          MCP_WORKSPACE_ROOT: workspaceRoot,
+        },
         maxBuffer: 16 * 1024 * 1024,
       },
     );
@@ -40,5 +45,8 @@ describe("sales process demo smoke test", () => {
       await readFile(join(outDir, "summary.json"), "utf8"),
     );
     expect(savedSummary.sceneId).toBe("sales-process-overview");
+
+    await rm(outDir, { recursive: true, force: true });
+    await rm(workspaceRoot, { recursive: true, force: true });
   }, 120_000);
 });

@@ -42,6 +42,12 @@ describe("MCP in-memory integration", () => {
     expect(tools.tools.some((tool) => tool.name === "scene_analyze")).toBe(
       true,
     );
+    expect(tools.tools.some((tool) => tool.name === "scene_quality_gate")).toBe(
+      true,
+    );
+    expect(
+      tools.tools.some((tool) => tool.name === "elements_create_skeletons"),
+    ).toBe(true);
     expect(tools.tools.some((tool) => tool.name === "elements_arrange")).toBe(
       true,
     );
@@ -58,6 +64,9 @@ describe("MCP in-memory integration", () => {
       tools.tools.some((tool) => tool.name === "styles_apply_preset"),
     ).toBe(true);
     expect(tools.tools.some((tool) => tool.name === "layers_reorder")).toBe(
+      true,
+    );
+    expect(tools.tools.some((tool) => tool.name === "diagram_compose")).toBe(
       true,
     );
     expect(tools.tools.some((tool) => tool.name === "nodes_create")).toBe(
@@ -92,6 +101,7 @@ describe("MCP in-memory integration", () => {
       },
     });
     expect(created.isError).toBeFalsy();
+    expect(((created as any).content[0] as any).text).toContain('"ok": true');
 
     const imported = await client.callTool({
       name: "scene_import_json",
@@ -145,6 +155,26 @@ describe("MCP in-memory integration", () => {
     });
     expect(elementsCreated.isError).toBeFalsy();
 
+    const skeletonsCreated = await client.callTool({
+      name: "elements_create_skeletons",
+      arguments: {
+        skeletons: [
+          {
+            id: "freehand-note",
+            type: "freedraw",
+            x: 420,
+            y: 80,
+            width: 80,
+            height: 40,
+            points: [[0, 0], [20, 12], [80, 40]],
+            pressures: [0.3, 0.6, 0.7],
+            simulatePressure: true,
+          },
+        ],
+      },
+    });
+    expect(skeletonsCreated.isError).toBeFalsy();
+
     const arranged = await client.callTool({
       name: "elements_arrange",
       arguments: {
@@ -196,9 +226,36 @@ describe("MCP in-memory integration", () => {
         sourceElementId: "left",
         targetElementId: "right",
         label: "flows",
+        startArrowhead: "circle_outline",
+        endArrowhead: "crowfoot_many",
       },
     });
     expect(connected.isError).toBeFalsy();
+
+    const composedDiagram = await client.callTool({
+      name: "diagram_compose",
+      arguments: {
+        sceneId: "it-composed",
+        title: "Composed Integration Diagram",
+        qualityTarget: 70,
+        nodes: [
+          { id: "compose-a", title: "A", body: "Input" },
+          { id: "compose-b", title: "B", body: "Output" },
+        ],
+        edges: [{ source: "compose-a", target: "compose-b" }],
+        legend: "Legend: arrows show flow",
+      },
+    });
+    expect(composedDiagram.isError).toBeFalsy();
+    expect((composedDiagram as any).structuredContent?.data?.qualityGate).toBeTruthy();
+
+    const reopenedAfterCompose = await client.callTool({
+      name: "scene_open",
+      arguments: {
+        sceneId: "it-scene",
+      },
+    });
+    expect(reopenedAfterCompose.isError).toBeFalsy();
 
     const reordered = await client.callTool({
       name: "layers_reorder",
@@ -296,6 +353,15 @@ describe("MCP in-memory integration", () => {
       },
     });
     expect(polished.isError).toBeFalsy();
+
+    const qualityGate = await client.callTool({
+      name: "scene_quality_gate",
+      arguments: {
+        minScore: 50,
+      },
+    });
+    expect(qualityGate.isError).toBeFalsy();
+    expect((qualityGate as any).structuredContent?.data?.analysis?.score).toBeGreaterThanOrEqual(0);
 
     const exported = await client.callTool({
       name: "export_json",

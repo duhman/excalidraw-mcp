@@ -19,6 +19,7 @@ All tools return structured output shaped like:
 - `scene_validate`
 - `scene_normalize`
 - `scene_analyze`
+- `scene_quality_gate`
 
 ### `scene_validate`
 
@@ -50,6 +51,7 @@ Use for richer review and deterministic follow-up planning. Returns:
 ## Element Tools
 
 - `elements_create`
+- `elements_create_skeletons`
 - `elements_update`
 - `elements_delete`
 - `elements_list`
@@ -63,12 +65,29 @@ Use for richer review and deterministic follow-up planning. Returns:
 - `frames_assign_elements`
 - `styles_apply_preset`
 - `layers_reorder`
+- `diagram_compose`
 - `nodes_create`
 - `nodes_compose`
 - `layout_flow`
 - `layout_swimlanes`
 - `layout_polish`
 - `connectors_create`
+
+### `elements_create_skeletons`
+
+Preferred low-level parity tool for public Excalidraw primitives. It uses Excalidraw's Skeleton API and supports `rectangle`, `diamond`, `ellipse`, `line`, `arrow`, `text`, `image`, `freedraw`, `embeddable`, `iframe`, `frame`, and `magicframe`.
+
+### `diagram_compose`
+
+Preferred high-level full-scene authoring tool for agents. It accepts semantic `title`, `diagramType`, `nodes`, `edges`, `frames` or `lanes`, optional `legend`, `stylePreset`, and `qualityTarget`, then runs deterministic authoring, polish, validation, and quality-gate checks.
+
+### `scene_quality_gate`
+
+Read-only release gate for high-quality output. Defaults to minimum score `90`, no structural errors, no overlaps/crossings/text overflow, title required for non-empty scenes, and legend required when relationships or multiple visual semantics are present.
+
+### `connectors_create`
+
+Creates line/arrow connectors with labels, explicit points, start/end bindings, and Excalidraw's public arrowhead enum.
 
 ### `nodes_compose`
 
@@ -219,9 +238,10 @@ Preferred deterministic loop:
 1. `scene_analyze`
 2. apply `scene_normalize` if structural issues exist
 3. use higher-level helpers:
-   `nodes_compose`, `layout_swimlanes`, `layout_flow`, `layout_polish`, `styles_apply_preset`
+   `diagram_compose`, `elements_create_skeletons`, `nodes_compose`, `layout_swimlanes`, `layout_flow`, `layout_polish`, `styles_apply_preset`
 4. `scene_validate`
-5. export
+5. `scene_quality_gate`
+6. export
 
 Worked examples are easiest to inspect in:
 

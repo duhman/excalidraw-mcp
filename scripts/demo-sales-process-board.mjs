@@ -4,7 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const repoRoot = process.cwd();
-const outDir = join(repoRoot, 'tmp', 'generated', 'sales-process-overview');
+const outDir = process.env.DEMO_OUT_DIR ?? join(repoRoot, 'tmp', 'generated', 'sales-process-overview');
 const tsxCli = join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 const transportArgs = [tsxCli, 'src/index.ts', '--transport', 'stdio'];
 
@@ -63,7 +63,7 @@ const transport = new StdioClientTransport({
   args: transportArgs,
   env: {
     ...process.env,
-    MCP_WORKSPACE_ROOT: repoRoot
+    MCP_WORKSPACE_ROOT: process.env.MCP_WORKSPACE_ROOT ?? repoRoot
   }
 });
 
