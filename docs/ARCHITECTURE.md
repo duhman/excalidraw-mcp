@@ -193,6 +193,7 @@ Protection layers:
 - unit tests for authoring, normalization, quality analysis, and account-link logic
 - integration tests over in-memory MCP transport
 - browser export tests
+- agent release E2E tests over MCP transport
 - demo smoke
 - compiled `dist` stdio smoke
 - structural visual fixtures

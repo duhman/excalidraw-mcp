@@ -4,13 +4,18 @@ This document is the shortest path to using `excalidraw-mcp` well as an LLM agen
 
 The server exposes low-level scene mutation tools, but the best results come from using the higher-level helpers first and treating direct patching as a last resort.
 
+For Claude Code and Claude Desktop installation, see [`CLAUDE_CLIENTS.md`](CLAUDE_CLIENTS.md).
+
 ## Default Operating Loop
 
 1. `scene_analyze`
 2. `scene_normalize` if structural issues are present
 3. higher-level authoring and layout helpers
 4. `scene_validate`
-5. export
+5. `scene_quality_gate`
+6. export
+
+Treat `TEXT_OVERFLOW`, `ELEMENT_OVERLAP`, `CONNECTOR_CROSSING`, and structural errors as release blockers. Use `scene_normalize` and `layout_polish` until the quality gate passes instead of exporting a nearly finished scene.
 
 Recommended export order:
 
@@ -26,6 +31,7 @@ Use this table when deciding what to call next.
 | --- | --- | --- |
 | Understand what is wrong with the scene | `scene_analyze` | Best first read. Returns issue codes, score, and `recommendedActions`. |
 | Confirm hard correctness before export | `scene_validate` | Use near the end. Treat this as the release gate for structure. |
+| Block imperfect final output | `scene_quality_gate` | Fails on score, overlap, crossings, text overflow, missing titles, and missing legends. |
 | Repair broken scene invariants | `scene_normalize` | Safe for geometry, file references, bindings, frames, and container backlinks. |
 | Build semantic diagram cards or blocks | `nodes_compose` | Preferred over manual rectangles + text. Supports title, body, icon, image, auto-height, and frame assignment. |
 | Build simple shaped nodes quickly | `nodes_create` | Good for lighter-weight diagrams when semantic slots are unnecessary. |
@@ -124,6 +130,7 @@ Aim for:
 
 - visible title when the scene is intended as a presentation asset
 - legend when symbols, arrows, or color meanings are non-obvious
+- no overflowing, clipped, or manually detached text; prefer `nodes_compose` and `connectors_create`
 - consistent typography scale
 - enough spacing that nodes do not visually merge at 100% zoom
 - connectors that support the story instead of crossing unnecessarily

@@ -275,6 +275,46 @@ function getConnectorLabelIds(connector: any, elements: any[]): string[] {
   return [...labelIds];
 }
 
+function connectorLength(connector: any): number {
+  const points = Array.isArray(connector?.points) ? connector.points : [];
+  if (points.length < 2) {
+    return Math.hypot(Number(connector?.width ?? 0), Number(connector?.height ?? 0));
+  }
+
+  let length = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1] ?? [0, 0];
+    const current = points[index] ?? [0, 0];
+    length += Math.hypot(
+      Number(current[0] ?? 0) - Number(previous[0] ?? 0),
+      Number(current[1] ?? 0) - Number(previous[1] ?? 0),
+    );
+  }
+  return length;
+}
+
+function connectorLabelMaxWidth(connector: any): number {
+  return Math.max(120, Math.min(220, Math.max(120, connectorLength(connector) * 0.55)));
+}
+
+function fitConnectorLabel(label: any, connector: any): void {
+  const fontSize = Math.max(8, Number(label.fontSize ?? TEXT_SCALE.body));
+  const lineHeight = Math.max(1, Number(label.lineHeight ?? 1.25));
+  const measured = measureWrappedTextBlock(
+    String(label.text ?? label.originalText ?? ""),
+    fontSize,
+    connectorLabelMaxWidth(connector),
+    lineHeight,
+  );
+
+  label.text = measured.text;
+  label.originalText = measured.text;
+  label.width = measured.width;
+  label.height = measured.height;
+  label.lineHeight = measured.lineHeight;
+  label.autoResize = false;
+}
+
 function syncConnectorGeometry(
   connector: any,
   idToElement: Map<string, any>,
@@ -311,6 +351,7 @@ function syncConnectorGeometry(
       continue;
     }
 
+    fitConnectorLabel(label, connector);
     const labelWidth = Number(label.width ?? 60);
     const labelHeight = Number(label.height ?? 24);
     label.x = layout.startX + (layout.endX - layout.startX) / 2 - labelWidth / 2;
@@ -1330,21 +1371,27 @@ export class SceneService {
 
       const additions = [connector];
       if (labelId) {
+        const labelMetrics = measureWrappedTextBlock(
+          input.label ?? "",
+          TEXT_SCALE.body,
+          connectorLabelMaxWidth(connector),
+        );
         additions.push({
           id: labelId,
           type: "text",
-          x: layout.startX + (layout.endX - layout.startX) / 2 - 30,
-          y: layout.startY + (layout.endY - layout.startY) / 2 - 12,
-          width: 60,
-          height: 24,
-          text: input.label,
-          originalText: input.label,
+          x: layout.startX + (layout.endX - layout.startX) / 2 - labelMetrics.width / 2,
+          y: layout.startY + (layout.endY - layout.startY) / 2 - labelMetrics.height / 2,
+          width: labelMetrics.width,
+          height: labelMetrics.height,
+          text: labelMetrics.text,
+          originalText: labelMetrics.text,
           containerId: connectorId,
           fontSize: 16,
           fontFamily: 1,
+          lineHeight: labelMetrics.lineHeight,
           textAlign: "center",
           verticalAlign: "middle",
-          autoResize: true,
+          autoResize: false,
           strokeColor: "#1e1e1e",
           seed: seedFromId(labelId),
         });

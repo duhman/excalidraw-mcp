@@ -188,6 +188,28 @@ function connectorEndpoints(
   };
 }
 
+function connectorLength(connector: Record<string, unknown>): number {
+  const points = Array.isArray(connector.points) ? connector.points : [];
+  if (points.length < 2) {
+    return Math.hypot(num(connector.width), num(connector.height));
+  }
+
+  let length = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = Array.isArray(points[index - 1]) ? points[index - 1] : [0, 0];
+    const current = Array.isArray(points[index]) ? points[index] : [0, 0];
+    length += Math.hypot(
+      num(current[0]) - num(previous[0]),
+      num(current[1]) - num(previous[1]),
+    );
+  }
+  return length;
+}
+
+function connectorLabelMaxWidth(connector: Record<string, unknown>): number {
+  return Math.max(120, Math.min(220, Math.max(120, connectorLength(connector) * 0.55)));
+}
+
 function inferBindingTargetId(
   point: Point,
   candidates: Array<Record<string, unknown>>,
@@ -855,37 +877,120 @@ export function applyDiagramQuality(
       const fontSize = Math.max(8, num(element.fontSize, DEFAULT_FONT_SIZE));
       const lineHeight = Math.max(1, num(element.lineHeight, DEFAULT_LINE_HEIGHT));
       if (CONNECTOR_TYPES.has(String(container.type ?? ""))) {
+        const maxTextWidth = connectorLabelMaxWidth(container);
+        const measured = measureWrappedTextBlock(
+          text,
+          fontSize,
+          maxTextWidth,
+          lineHeight,
+        );
+        const estimatedWidth = estimateTextWidth(text, fontSize);
+        const tooWide =
+          estimatedWidth > maxTextWidth ||
+          num(element.width) > maxTextWidth + 1;
+        const tooShort = num(element.height) + 1 < measured.height;
+
+        if (tooWide || tooShort) {
+          issues.push({
+            code: "TEXT_OVERFLOW",
+            severity: "warning",
+            message: "Connector label does not fit its available width or height",
+            elementId,
+            details: {
+              containerId,
+              estimatedWidth,
+              maxTextWidth,
+              measuredHeight: measured.height,
+              currentHeight: num(element.height),
+            },
+          });
+
+          if (fix) {
+            const { start, end } = connectorEndpoints(container);
+            element.text = measured.text;
+            element.originalText = measured.text;
+            element.width = measured.width;
+            element.height = measured.height;
+            element.lineHeight = measured.lineHeight;
+            element.autoResize = false;
+            element.x = (start.x + end.x) / 2 - measured.width / 2;
+            element.y = (start.y + end.y) / 2 - measured.height / 2;
+            fixesApplied += 1;
+          }
+        }
         continue;
       }
       const containerWidth = Math.max(40, num(container.width, 40));
+      const containerHeight = Math.max(40, num(container.height, 40));
       const maxTextWidth = Math.max(32, containerWidth - CONTAINER_PADDING);
+      const maxTextHeight = Math.max(16, containerHeight - CONTAINER_PADDING);
       const estimatedWidth = estimateTextWidth(text, fontSize);
+      const measured = measureWrappedTextBlock(
+        text,
+        fontSize,
+        maxTextWidth,
+        lineHeight,
+      );
+      const allowedLeft = num(container.x) + CONTAINER_PADDING / 2;
+      const allowedTop = num(container.y) + CONTAINER_PADDING / 2;
+      const allowedRight = num(container.x) + containerWidth - CONTAINER_PADDING / 2;
+      const allowedBottom = num(container.y) + containerHeight - CONTAINER_PADDING / 2;
+      const currentWidth = Math.max(num(element.width), measured.width);
+      const currentHeight = Math.max(num(element.height), measured.height);
+      const needsWidthFix =
+        estimatedWidth > maxTextWidth ||
+        num(element.width) > maxTextWidth + 1;
+      const needsHeightFix =
+        measured.height > maxTextHeight ||
+        num(element.height) + 1 < measured.height;
+      const needsPlacementFix =
+        num(element.x) < allowedLeft - 1 ||
+        num(element.y) < allowedTop - 1 ||
+        num(element.x) + currentWidth > allowedRight + 1 ||
+        num(element.y) + currentHeight > allowedBottom + 1;
 
-      if (estimatedWidth > maxTextWidth) {
+      if (needsWidthFix || needsHeightFix || needsPlacementFix) {
         issues.push({
           code: "TEXT_OVERFLOW",
           severity: "warning",
-          message: "Text overflows its container width",
+          message: "Text overflows or is clipped by its container",
           elementId,
           details: {
             containerId,
             estimatedWidth,
             maxTextWidth,
+            measuredHeight: measured.height,
+            maxTextHeight,
+            needsPlacementFix,
           },
         });
 
         if (fix) {
-          const measured = measureWrappedTextBlock(
-            text,
-            fontSize,
-            maxTextWidth,
-            lineHeight,
-          );
-
           element.text = measured.text;
           element.originalText = measured.text;
           element.width = measured.width;
-          element.height = Math.max(num(element.height), measured.height);
+          element.height = measured.height;
+          element.lineHeight = measured.lineHeight;
+          element.autoResize = false;
+
+          if (measured.height > maxTextHeight) {
+            container.height = Math.max(
+              containerHeight,
+              measured.height + CONTAINER_PADDING,
+            );
+          }
+
+          const nextContainerHeight = Math.max(
+            num(container.height, containerHeight),
+            measured.height + CONTAINER_PADDING,
+          );
+          element.x = num(container.x) + CONTAINER_PADDING / 2;
+          element.y =
+            num(container.y) +
+            Math.max(
+              CONTAINER_PADDING / 2,
+              (nextContainerHeight - measured.height) / 2,
+            );
           fixesApplied += 1;
         }
       }

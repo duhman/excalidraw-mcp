@@ -405,4 +405,117 @@ describe("SceneService", () => {
     expect(tools).toContain("layout_polish");
     expect(tools).toContain("styles_apply_preset");
   });
+
+  it("expands containers when wrapped text needs more vertical room", async () => {
+    await service.createScene({ sceneId: "vertical-overflow-scene" });
+
+    const patched = await service.patchScene("vertical-overflow-scene", [
+      {
+        op: "addElements",
+        elements: [
+          {
+            id: "box",
+            type: "rectangle",
+            x: 0,
+            y: 0,
+            width: 140,
+            height: 48,
+          },
+          {
+            id: "box-text",
+            type: "text",
+            containerId: "box",
+            x: 8,
+            y: 8,
+            width: 300,
+            height: 18,
+            fontSize: 18,
+            lineHeight: 1.25,
+            text: "This content wraps across several lines and must remain inside the box",
+          },
+        ],
+      },
+    ] as any);
+
+    const box = patched.scene.elements.find((element: any) => element.id === "box");
+    const text = patched.scene.elements.find((element: any) => element.id === "box-text");
+
+    expect(String(text?.text ?? "")).toContain("\n");
+    expect(Number(box?.height)).toBeGreaterThan(48);
+    expect(Number(text?.y) + Number(text?.height)).toBeLessThanOrEqual(
+      Number(box?.y) + Number(box?.height),
+    );
+
+    const validation = await service.validateScene("vertical-overflow-scene");
+    expect(validation.qualityIssues.some((issue) => issue.code === "TEXT_OVERFLOW")).toBe(false);
+  });
+
+  it("repositions bound text that would otherwise sit outside its container", async () => {
+    await service.createScene({ sceneId: "text-placement-scene" });
+
+    const patched = await service.patchScene("text-placement-scene", [
+      {
+        op: "addElements",
+        elements: [
+          { id: "box", type: "rectangle", x: 100, y: 100, width: 180, height: 96 },
+          {
+            id: "label",
+            type: "text",
+            containerId: "box",
+            x: 260,
+            y: 170,
+            width: 64,
+            height: 20,
+            fontSize: 16,
+            text: "Inside",
+          },
+        ],
+      },
+    ] as any);
+
+    const box = patched.scene.elements.find((element: any) => element.id === "box");
+    const label = patched.scene.elements.find((element: any) => element.id === "label");
+
+    expect(Number(label?.x)).toBeGreaterThanOrEqual(Number(box?.x));
+    expect(Number(label?.y)).toBeGreaterThanOrEqual(Number(box?.y));
+    expect(Number(label?.x) + Number(label?.width)).toBeLessThanOrEqual(
+      Number(box?.x) + Number(box?.width),
+    );
+    expect(Number(label?.y) + Number(label?.height)).toBeLessThanOrEqual(
+      Number(box?.y) + Number(box?.height),
+    );
+
+    const validation = await service.validateScene("text-placement-scene");
+    expect(validation.qualityIssues.some((issue) => issue.code === "TEXT_OVERFLOW")).toBe(false);
+  });
+
+  it("wraps long connector labels and keeps them centered on the connector", async () => {
+    await service.createScene({
+      sceneId: "connector-label-fit-scene",
+      elements: [
+        { id: "left", type: "rectangle", x: 0, y: 0, width: 120, height: 64 },
+        { id: "right", type: "rectangle", x: 300, y: 0, width: 120, height: 64 },
+      ],
+    });
+
+    const result = await service.createConnector("connector-label-fit-scene", {
+      sourceElementId: "left",
+      targetElementId: "right",
+      label: "approval payload with unusually detailed context",
+      connectorType: "arrow",
+    });
+
+    const connector = result.scene.elements.find((element: any) => element.id === result.connectorId);
+    const label = result.scene.elements.find((element: any) => element.id === result.labelId);
+    const connectorCenterX = Number(connector?.x) + Number(connector?.width) / 2;
+    const connectorCenterY = Number(connector?.y) + Number(connector?.height) / 2;
+
+    expect(String(label?.text ?? "")).toContain("\n");
+    expect(Number(label?.width)).toBeLessThanOrEqual(220);
+    expect(Number(label?.x) + Number(label?.width) / 2).toBeCloseTo(connectorCenterX, 3);
+    expect(Number(label?.y) + Number(label?.height) / 2).toBeCloseTo(connectorCenterY, 3);
+
+    const validation = await service.validateScene("connector-label-fit-scene");
+    expect(validation.qualityIssues.some((issue) => issue.code === "TEXT_OVERFLOW")).toBe(false);
+  });
 });

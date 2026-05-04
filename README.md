@@ -17,6 +17,7 @@ The goal is not just to mutate scene JSON. The server gives agents a safer abstr
 - Tool reference: [`docs/TOOL_REFERENCE.md`](docs/TOOL_REFERENCE.md)
 - Capability matrix: [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md)
 - Agent playbook: [`docs/AGENT_PLAYBOOK.md`](docs/AGENT_PLAYBOOK.md)
+- Claude client setup: [`docs/CLAUDE_CLIENTS.md`](docs/CLAUDE_CLIENTS.md)
 - Account linking: [`docs/ACCOUNT_LINKING.md`](docs/ACCOUNT_LINKING.md)
 
 ## What’s In The Server
@@ -188,6 +189,16 @@ Optional environment variables:
 - `MCP_HTTP_PATH` default `/mcp`
 - `MCP_WORKSPACE_ROOT` default current working directory
 
+## Claude Clients
+
+Claude Code and Claude Desktop should both point at the built stdio server:
+
+```bash
+node /Users/workboi/projects/excalidraw-mcp/dist/src/index.js --transport stdio
+```
+
+Use `MCP_WORKSPACE_ROOT=/Users/workboi/projects/excalidraw-mcp`. Full setup and verification commands are in [`docs/CLAUDE_CLIENTS.md`](docs/CLAUDE_CLIENTS.md).
+
 ## Verification
 
 Main local gate:
@@ -220,6 +231,8 @@ The repo includes structural fixture tests and committed canonicalized SVG golde
 - process board
 - swimlane board
 - frame-based architecture
+
+Agent release E2E coverage also exercises MCP-client workflows for semantic compose, manual repair, quality gates, and all export formats.
 
 Refresh goldens intentionally only:
 
