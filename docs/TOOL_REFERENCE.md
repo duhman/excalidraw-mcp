@@ -222,6 +222,21 @@ Current issue codes emitted by validation/analysis:
 - `excalidraw://scene/{sceneId}/app-state`
 - `excalidraw://scene/{sceneId}/library`
 - `excalidraw://scene/{sceneId}/files`
+- `excalidraw://docs` (JSON index of bundled skill references)
+- `excalidraw://docs/{topic}` (Markdown for an individual skill reference)
+
+Bundled docs topics (served from `skills/excalidraw-agent/references/`):
+
+- `agent-skills-protocol-notes`
+- `excalidraw-account-linking`
+- `excalidraw-client-compatibility`
+- `excalidraw-collaboration-pattern`
+- `excalidraw-install-and-integration`
+- `excalidraw-mermaid-conversion`
+- `excalidraw-props-and-api`
+- `excalidraw-troubleshooting`
+- `excalidraw-ui-composition`
+- `excalidraw-utils-restore-export`
 
 ## Prompt Catalog
 

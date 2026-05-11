@@ -175,6 +175,22 @@ Important resource URIs:
 - `excalidraw://scene/{sceneId}/app-state`
 - `excalidraw://scene/{sceneId}/library`
 - `excalidraw://scene/{sceneId}/files`
+- `excalidraw://docs` (JSON index of bundled skill references)
+- `excalidraw://docs/{topic}` (Markdown for an individual skill reference, e.g. `excalidraw-troubleshooting`)
+
+## Bundled Agent Skill
+
+Files:
+
+- `skills/excalidraw-agent/SKILL.md`
+- `skills/excalidraw-agent/references/*.md`
+- `skills/excalidraw-agent/assets/examples/*`
+- `skills/excalidraw-agent/agents/openai.yaml` (Codex-only metadata)
+
+Responsibilities:
+
+- Anthropic Agent Skill (`agentskills.io/specification`) describing how to embed Excalidraw in host apps and orchestrate the snake_case MCP tools in this server.
+- Reference files are static markdown and double as the source for the `excalidraw://docs/*` MCP resources, so a single copy serves both filesystem-based skill clients (Claude Code, Codex, Cursor, Zed) and MCP-only clients.
 
 ## Persistent Data Layout
 

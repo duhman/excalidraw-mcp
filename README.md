@@ -19,6 +19,7 @@ The goal is not just to mutate scene JSON. The server gives agents a safer abstr
 - Agent playbook: [`docs/AGENT_PLAYBOOK.md`](docs/AGENT_PLAYBOOK.md)
 - Claude client setup: [`docs/CLAUDE_CLIENTS.md`](docs/CLAUDE_CLIENTS.md)
 - Account linking: [`docs/ACCOUNT_LINKING.md`](docs/ACCOUNT_LINKING.md)
+- Bundled Agent Skill: [`skills/excalidraw-agent/SKILL.md`](skills/excalidraw-agent/SKILL.md)
 
 ## What’s In The Server
 
@@ -47,6 +48,8 @@ The goal is not just to mutate scene JSON. The server gives agents a safer abstr
   - `excalidraw://scene/{sceneId}/summary`
   - `excalidraw://scene/{sceneId}/analysis`
   - `excalidraw://scene/{sceneId}/json`
+  - `excalidraw://docs` (index of bundled skill references)
+  - `excalidraw://docs/{topic}` (e.g. `excalidraw-troubleshooting`, `excalidraw-install-and-integration`)
 - Prompts for planning, refinement, conversion, and review
 
 ## Agent Workflow
@@ -102,7 +105,11 @@ If the client supports MCP prompts, start with `agent-workflow-guide` for an in-
     "laneHeight": 260,
     "lanes": [
       { "laneId": "lane-intake", "label": "Intake", "elementIds": ["api"] },
-      { "laneId": "lane-processing", "label": "Processing", "elementIds": ["worker"] }
+      {
+        "laneId": "lane-processing",
+        "label": "Processing",
+        "elementIds": ["worker"]
+      }
     ]
   }
 }
@@ -295,6 +302,33 @@ node scripts/demo-sales-process-board.mjs
 
 Artifacts are written under `tmp/generated/sales-process-overview/`.
 
+## Bundled Agent Skill
+
+This repo ships an Anthropic [Agent Skill](https://agentskills.io/specification) at
+[`skills/excalidraw-agent/`](skills/excalidraw-agent/). It gives agent clients procedural
+guidance for embedding Excalidraw in React/Next.js host apps, troubleshooting runtime
+issues, and orchestrating the snake_case MCP tools above. Its reference files are also
+served by this MCP server as `excalidraw://docs/{topic}` resources, so MCP-only clients can
+read them without filesystem access.
+
+Install into your agent client by symlinking the directory:
+
+```bash
+ln -s "$PWD/skills/excalidraw-agent" ~/.claude/skills/excalidraw-agent      # Claude Code
+ln -s "$PWD/skills/excalidraw-agent" ~/.codex/skills/excalidraw-agent       # Codex
+ln -s "$PWD/skills/excalidraw-agent" ~/.cursor/skills/excalidraw-agent      # Cursor
+ln -s "$PWD/skills/excalidraw-agent" ~/.config/zed/skills/excalidraw-agent  # Zed
+```
+
+Validate the skill metadata:
+
+```bash
+npx --yes skills-ref validate skills/excalidraw-agent
+```
+
+The skill no longer ships its own bash scripts — all execution work routes through the MCP
+tools in this server.
+
 ## For Agent Authors
 
 If you are wiring this server into another agent stack, the best onboarding path is:
@@ -303,3 +337,4 @@ If you are wiring this server into another agent stack, the best onboarding path
 2. inspect [`docs/TOOL_REFERENCE.md`](docs/TOOL_REFERENCE.md)
 3. use the `agent-workflow-guide` prompt
 4. prefer `nodes_compose`, `layout_swimlanes`, `layout_flow`, `layout_polish`, and `styles_apply_preset` over raw patching
+5. install the bundled `skills/excalidraw-agent` for in-band procedural guidance

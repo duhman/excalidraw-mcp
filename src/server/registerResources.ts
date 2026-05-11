@@ -1,11 +1,49 @@
-import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  McpServer,
+  ResourceTemplate,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SceneService } from "../domain/sceneService.js";
 
 function asJsonText(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-export function registerResources(server: McpServer, sceneService: SceneService): void {
+const SKILL_REFERENCES_DIR = fileURLToPath(
+  new URL("../../skills/excalidraw-agent/references/", import.meta.url),
+);
+
+interface SkillDoc {
+  topic: string;
+  filename: string;
+  title: string;
+}
+
+function discoverSkillDocs(): SkillDoc[] {
+  if (!existsSync(SKILL_REFERENCES_DIR)) return [];
+  return readdirSync(SKILL_REFERENCES_DIR)
+    .filter((entry) => entry.endsWith(".md"))
+    .sort()
+    .map((filename) => {
+      const topic = filename.replace(/\.md$/, "");
+      let title = topic;
+      try {
+        const text = readFileSync(join(SKILL_REFERENCES_DIR, filename), "utf8");
+        const match = text.match(/^#\s+(.+)$/m);
+        if (match) title = match[1].trim();
+      } catch {
+        // fall back to topic slug if file is unreadable at startup
+      }
+      return { topic, filename, title };
+    });
+}
+
+export function registerResources(
+  server: McpServer,
+  sceneService: SceneService,
+): void {
   server.registerResource(
     "scenes",
     "excalidraw://scenes",
@@ -26,18 +64,18 @@ export function registerResources(server: McpServer, sceneService: SceneService)
           {
             uri: "excalidraw://scenes",
             mimeType: "application/json",
-            text: asJsonText({ scenes, count: scenes.length })
-          }
-        ]
+            text: asJsonText({ scenes, count: scenes.length }),
+          },
+        ],
       };
-    }
+    },
   );
 
   const makeSceneTemplate = (
     name: string,
     uriTemplate: string,
     description: string,
-    load: (sceneId: string, uri: URL) => Promise<unknown>
+    load: (sceneId: string, uri: URL) => Promise<unknown>,
   ) => {
     server.registerResource(
       name,
@@ -47,10 +85,10 @@ export function registerResources(server: McpServer, sceneService: SceneService)
           return {
             resources: scenes.map((scene) => ({
               uri: uriTemplate.replace("{sceneId}", scene.sceneId),
-              name: `${name}:${scene.sceneId}`
-            }))
+              name: `${name}:${scene.sceneId}`,
+            })),
           };
-        }
+        },
       }),
       {
         description,
@@ -69,11 +107,11 @@ export function registerResources(server: McpServer, sceneService: SceneService)
             {
               uri: uri.toString(),
               mimeType: "application/json",
-              text: asJsonText(payload)
-            }
-          ]
+              text: asJsonText(payload),
+            },
+          ],
         };
-      }
+      },
     );
   };
 
@@ -83,7 +121,9 @@ export function registerResources(server: McpServer, sceneService: SceneService)
     "Compact scene summary with metadata and topology hints",
     async (sceneId) => {
       const scene = await sceneService.getScene(sceneId);
-      const visibleElements = scene.elements.filter((element) => !element.isDeleted);
+      const visibleElements = scene.elements.filter(
+        (element) => !element.isDeleted,
+      );
       const typeHistogram: Record<string, number> = {};
       for (const element of visibleElements) {
         const type = String(element.type ?? "unknown");
@@ -100,10 +140,10 @@ export function registerResources(server: McpServer, sceneService: SceneService)
           viewModeEnabled: scene.appState.viewModeEnabled,
           scrollX: scene.appState.scrollX,
           scrollY: scene.appState.scrollY,
-          zoom: scene.appState.zoom
-        }
+          zoom: scene.appState.zoom,
+        },
       };
-    }
+    },
   );
 
   makeSceneTemplate(
@@ -131,9 +171,9 @@ export function registerResources(server: McpServer, sceneService: SceneService)
       return {
         schemaVersion: 1,
         revisionHash: scene.metadata.revisionHash,
-        scene
+        scene,
       };
-    }
+    },
   );
 
   makeSceneTemplate(
@@ -145,14 +185,14 @@ export function registerResources(server: McpServer, sceneService: SceneService)
       const limit = limitParam ? Number(limitParam) : undefined;
       const elements = await sceneService.listElements(sceneId, {
         includeDeleted: true,
-        limit: Number.isFinite(limit) ? limit : undefined
+        limit: Number.isFinite(limit) ? limit : undefined,
       });
       return {
         sceneId,
         count: elements.length,
-        elements
+        elements,
       };
-    }
+    },
   );
 
   makeSceneTemplate(
@@ -161,8 +201,8 @@ export function registerResources(server: McpServer, sceneService: SceneService)
     "Scene appState payload",
     async (sceneId) => ({
       sceneId,
-      appState: await sceneService.getAppState(sceneId)
-    })
+      appState: await sceneService.getAppState(sceneId),
+    }),
   );
 
   makeSceneTemplate(
@@ -174,9 +214,9 @@ export function registerResources(server: McpServer, sceneService: SceneService)
       return {
         sceneId,
         count: libraryItems.length,
-        libraryItems
+        libraryItems,
       };
-    }
+    },
   );
 
   makeSceneTemplate(
@@ -190,14 +230,83 @@ export function registerResources(server: McpServer, sceneService: SceneService)
         mimeType: file.mimeType,
         created: file.created,
         lastRetrieved: file.lastRetrieved,
-        sizeEstimate: typeof file.dataURL === "string" ? file.dataURL.length : 0
+        sizeEstimate:
+          typeof file.dataURL === "string" ? file.dataURL.length : 0,
       }));
 
       return {
         sceneId,
         count: files.length,
-        files
+        files,
       };
-    }
+    },
   );
+
+  const skillDocs = discoverSkillDocs();
+  const docsLastModified = new Date().toISOString();
+
+  server.registerResource(
+    "docs-index",
+    "excalidraw://docs",
+    {
+      title: "Excalidraw Skill Documentation",
+      description:
+        "Index of bundled Excalidraw integration, API, and troubleshooting references (mirrors skills/excalidraw-agent/references)",
+      mimeType: "application/json",
+      annotations: {
+        audience: ["assistant"],
+        priority: 0.6,
+        lastModified: docsLastModified,
+      },
+    },
+    async () => ({
+      contents: [
+        {
+          uri: "excalidraw://docs",
+          mimeType: "application/json",
+          text: asJsonText({
+            count: skillDocs.length,
+            topics: skillDocs.map((doc) => ({
+              topic: doc.topic,
+              title: doc.title,
+              uri: `excalidraw://docs/${doc.topic}`,
+            })),
+          }),
+        },
+      ],
+    }),
+  );
+
+  for (const doc of skillDocs) {
+    const uri = `excalidraw://docs/${doc.topic}`;
+    server.registerResource(
+      `docs:${doc.topic}`,
+      uri,
+      {
+        title: doc.title,
+        description: `Excalidraw skill reference: ${doc.title}`,
+        mimeType: "text/markdown",
+        annotations: {
+          audience: ["assistant"],
+          priority: 0.5,
+          lastModified: docsLastModified,
+        },
+      },
+      async () => {
+        const text = readFileSync(
+          join(SKILL_REFERENCES_DIR, doc.filename),
+          "utf8",
+        );
+        return {
+          contents: [
+            {
+              uri,
+              mimeType: "text/markdown",
+              text,
+            },
+          ],
+        };
+      },
+    );
+  }
 }
