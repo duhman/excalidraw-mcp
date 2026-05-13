@@ -6,6 +6,10 @@ import { SceneStore } from "../domain/sceneStore.js";
 import { SceneService } from "../domain/sceneService.js";
 import { ExportService } from "../export/exportService.js";
 import { AccountImporter } from "../account/accountImporter.js";
+import {
+  createExcalidrawPlusStorageProviderFromEnv,
+  type ExcalidrawPlusSceneProvider,
+} from "../official/excalidrawPlusApiClient.js";
 import { registerTools } from "./registerTools.js";
 import { registerResources } from "./registerResources.js";
 import { registerPrompts } from "./registerPrompts.js";
@@ -17,6 +21,7 @@ export interface ExcalidrawMcpServices {
   browserEngine: BrowserEngine;
   exportService: ExportService;
   accountImporter: AccountImporter;
+  plusProvider: ExcalidrawPlusSceneProvider;
 }
 
 export interface CreateExcalidrawServerOptions {
@@ -24,6 +29,7 @@ export interface CreateExcalidrawServerOptions {
   version?: string;
   browserMaxConcurrency?: number;
   browserIdleRecycleMs?: number;
+  plusProvider?: ExcalidrawPlusSceneProvider;
 }
 
 export async function createExcalidrawMcpServer(
@@ -42,6 +48,7 @@ export async function createExcalidrawMcpServer(
   const jsonEngine = new JsonEngine();
   const sceneService = new SceneService(sceneStore, jsonEngine, browserEngine);
   const exportService = new ExportService(sceneService);
+  const plusProvider = options.plusProvider ?? createExcalidrawPlusStorageProviderFromEnv();
 
   const server = new McpServer(
     {
@@ -59,7 +66,7 @@ export async function createExcalidrawMcpServer(
     }
   );
 
-  registerTools(server, sceneService, exportService, accountImporter);
+  registerTools(server, sceneService, exportService, accountImporter, plusProvider);
   registerResources(server, sceneService);
   registerPrompts(server);
 
@@ -69,6 +76,7 @@ export async function createExcalidrawMcpServer(
     sceneService,
     browserEngine,
     exportService,
-    accountImporter
+    accountImporter,
+    plusProvider
   };
 }

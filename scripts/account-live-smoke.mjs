@@ -32,22 +32,29 @@ function unwrap(result, label) {
   return result?.structuredContent?.data ?? {};
 }
 
+function callTool(params, timeoutSec) {
+  return client.callTool(params, undefined, {
+    timeout: timeoutSec * 1000,
+    maxTotalTimeout: timeoutSec * 1000,
+  });
+}
+
 try {
   await client.connect(transport);
 
   unwrap(
-    await client.callTool({
+    await callTool({
       name: "scene_create",
       arguments: {
         sceneId: "account-live-smoke",
         name: `Account Live Smoke (${destination})`,
       },
-    }),
+    }, 30),
     "scene_create",
   );
 
   unwrap(
-    await client.callTool({
+    await callTool({
       name: "nodes_compose",
       arguments: {
         sceneId: "account-live-smoke",
@@ -64,20 +71,21 @@ try {
           },
         ],
       },
-    }),
+    }, 30),
     "nodes_compose",
   );
 
   const login = unwrap(
-    await client.callTool({
+    await callTool({
       name: "account_login_session",
       arguments: {
         destination,
         mode: "headed",
         session,
+        timeoutSec: 30,
         closeOnComplete: true,
       },
-    }),
+    }, 45),
     "account_login_session",
   ).login;
 
@@ -88,17 +96,18 @@ try {
   }
 
   const importResult = unwrap(
-    await client.callTool({
+    await callTool({
       name: "account_import_scene",
       arguments: {
         sceneId: "account-live-smoke",
         destination,
         mode: "headed",
         session,
+        timeoutSec: 90,
         allowInteractiveLogin: false,
         closeOnComplete: true,
       },
-    }),
+    }, 105),
     "account_import_scene",
   ).import;
 
@@ -107,12 +116,12 @@ try {
   }
 
   const status = unwrap(
-    await client.callTool({
+    await callTool({
       name: "account_link_status",
       arguments: {
         session,
       },
-    }),
+    }, 30),
     "account_link_status",
   );
 

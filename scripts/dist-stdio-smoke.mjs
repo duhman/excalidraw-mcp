@@ -94,6 +94,78 @@ try {
     "layout_swimlanes",
   );
 
+  const format = unwrap(
+    await client.callTool({
+      name: "read_excalidraw_format",
+      arguments: {},
+    }),
+    "read_excalidraw_format",
+  );
+  if (!format.editSemantics?.order?.includes("add")) {
+    throw new Error("read_excalidraw_format did not return edit semantics");
+  }
+
+  const officialEdit = unwrap(
+    await client.callTool({
+      name: "edit_scene_content",
+      arguments: {
+        sceneId: "dist-smoke-scene",
+        add: JSON.stringify([
+          {
+            tempId: "official-frame",
+            type: "frame",
+            x: 40,
+            y: 430,
+            width: 640,
+            height: 240,
+            name: "Official compatibility",
+          },
+          {
+            tempId: "official-card",
+            type: "rectangle",
+            frameId: "official-frame",
+            x: 88,
+            y: 500,
+            width: 180,
+            height: 80,
+            label: { text: "Official edit" },
+          },
+        ]),
+      },
+    }),
+    "edit_scene_content",
+  );
+  if (!officialEdit.tempIdMap?.["official-card"]) {
+    throw new Error("edit_scene_content did not return tempIdMap");
+  }
+
+  const officialSearch = unwrap(
+    await client.callTool({
+      name: "search_scene_content",
+      arguments: {
+        sceneId: "dist-smoke-scene",
+        query: "official_edit",
+      },
+    }),
+    "search_scene_content",
+  );
+  if (officialSearch.count < 1) {
+    throw new Error("search_scene_content did not find official label");
+  }
+
+  const officialContent = unwrap(
+    await client.callTool({
+      name: "get_scene_content",
+      arguments: {
+        sceneId: "dist-smoke-scene",
+      },
+    }),
+    "get_scene_content",
+  );
+  if (officialContent.sourceProvider !== "local") {
+    throw new Error(`unexpected scene content provider: ${officialContent.sourceProvider}`);
+  }
+
   const analysis = unwrap(
     await client.callTool({
       name: "scene_analyze",

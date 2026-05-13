@@ -44,6 +44,8 @@ These are the canonical execution paths. Prefer them over any local scripting. A
 | Intent                                           | MCP tool                                                                                                                                                                  |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Create / open / list scenes                      | `scene_create`, `scene_open`, `scene_list`, `scene_get`, `scene_save`, `scene_close`                                                                                      |
+| Official-compatible scene content                | `read_excalidraw_format`, `get_scene_content`, `search_scene_content`, `edit_scene_content`                                                                               |
+| Official Excalidraw+ persistence adapter          | `plus_api_status`, `plus_scenes_list`, `plus_scene_content_get`, `plus_scene_create`, `plus_scene_content_patch`, `plus_scene_content_replace`                            |
 | Import an existing `.excalidraw` file            | `scene_import_json`                                                                                                                                                       |
 | Mutate scene at the primitive level              | `scene_patch`, `elements_create`, `elements_create_skeletons`, `elements_update`, `elements_delete`, `elements_list`                                                      |
 | Layout cleanup                                   | `elements_arrange` (align / distribute / stack / grid), `layout_polish`                                                                                                   |
@@ -117,6 +119,9 @@ This path is _not_ served by the MCP server — it requires editing the host app
 
 1. Call `diagram_compose` with semantic `title`, `nodes`, `edges`, and optional `frames` / `lanes`, `legend`, `stylePreset`, and `qualityTarget`. It runs deterministic authoring, polish, validation, and quality-gate checks in one tool call.
 2. If the result needs refinement, follow the `recommendedActions` from `scene_analyze`.
+3. For targeted official-style edits, first call `search_scene_content` to find exact IDs, then call `edit_scene_content`. Use `tempId` instead of `id` on new elements, and reference those temp IDs from `frameId`, `containerId`, `startBinding.elementId`, and `endBinding.elementId`.
+4. Use `read_excalidraw_format` when an agent needs the official scene-content contract in-context; use `get_scene_content` when a downstream tool expects the official-style `elements` / `appState` / `files` shape.
+5. To persist into Excalidraw+ rather than only local workspace storage, first call `plus_api_status`; if configured, use `plus_scene_create` followed by `plus_scene_content_patch` for incremental remote writes. Reserve `plus_scene_content_replace` for explicit whole-scene publish/restore because omitted elements are deleted remotely.
 
 ### 4) Convert Mermaid to `.excalidraw`
 

@@ -3,6 +3,15 @@ import tsParser from "@typescript-eslint/parser";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 
 export default [
+  {
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      "vendor/**",
+      "tmp/**",
+      "src/**/*.bundle.js",
+    ]
+  },
   js.configs.recommended,
   {
     files: ["**/*.{js,mjs,ts}"],
@@ -36,11 +45,4 @@ export default [
       "no-undef": "off"
     }
   },
-  {
-    ignores: [
-      "dist/**",
-      "node_modules/**",
-      "src/**/*.bundle.js",
-    ]
-  }
 ];

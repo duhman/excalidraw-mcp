@@ -455,6 +455,103 @@ function getSemanticRootId(element: any): string | null {
   return rootId || null;
 }
 
+function normalizeSearchText(value: unknown): string {
+  return String(value ?? "")
+    .toLocaleLowerCase()
+    .replace(/[\s\-_.,:;/\\]+/g, "");
+}
+
+function globToRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i");
+}
+
+function getElementSearchFields(element: any): Record<string, string> {
+  return {
+    id: String(element?.id ?? ""),
+    type: String(element?.type ?? ""),
+    text: String(element?.text ?? ""),
+    originalText: String(element?.originalText ?? ""),
+    name: String(element?.name ?? ""),
+    semanticRole: getSemanticRole(element),
+    customData: element?.customData ? JSON.stringify(element.customData) : "",
+  };
+}
+
+function resolveElementReferences(value: any, idMap: Map<string, string>): any {
+  if (Array.isArray(value)) {
+    return value.map((entry) => resolveElementReferences(entry, idMap));
+  }
+  if (!value || typeof value !== "object") {
+    return typeof value === "string" && idMap.has(value) ? idMap.get(value) : value;
+  }
+
+  const next: any = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (
+      (key === "frameId" || key === "containerId" || key === "elementId") &&
+      typeof entry === "string" &&
+      idMap.has(entry)
+    ) {
+      next[key] = idMap.get(entry);
+    } else {
+      next[key] = resolveElementReferences(entry, idMap);
+    }
+  }
+  return next;
+}
+
+function createBoundTextSkeleton(container: any, text: string, id = uuidv4()): any {
+  const width = Math.max(80, Number(container.width ?? 160) - NODE_PADDING * 2);
+  const height = Math.max(24, Math.min(Number(container.height ?? 72), TEXT_SCALE.body * 1.5));
+  return {
+    id,
+    type: "text",
+    x: Number(container.x ?? 0) + NODE_PADDING,
+    y: Number(container.y ?? 0) + Math.max(8, (Number(container.height ?? 72) - height) / 2),
+    width,
+    height,
+    text,
+    originalText: text,
+    fontSize: TEXT_SCALE.body,
+    fontFamily: 1,
+    textAlign: "center",
+    verticalAlign: "middle",
+    autoResize: true,
+    containerId: container.id,
+    frameId: container.frameId ?? null,
+  };
+}
+
+function extractLabelText(label: unknown): string | null {
+  if (!label || typeof label !== "object") {
+    return null;
+  }
+  const text = (label as any).text;
+  return typeof text === "string" ? text : null;
+}
+
+function expandLabeledSkeleton(skeleton: any): any[] {
+  const labelText = extractLabelText(skeleton?.label);
+  const base = { ...skeleton };
+  delete base.label;
+  delete base.tempId;
+  if (isFrameElement(base) && !Array.isArray(base.children)) {
+    base.children = [];
+  }
+
+  if (!labelText || base.type === "text") {
+    return [base];
+  }
+
+  const text = createBoundTextSkeleton(base, labelText);
+  base.boundElements = [
+    ...(Array.isArray(base.boundElements) ? base.boundElements : []),
+    { id: text.id, type: "text" },
+  ];
+  return [base, text];
+}
+
 function moveRootsWithDependents(
   elements: any[],
   rootIds: Set<string>,
@@ -852,6 +949,195 @@ export class SceneService {
     }
 
     return elements;
+  }
+
+  async searchSceneContent(
+    sceneId: string,
+    options: {
+      query: string;
+      mode?: "contains" | "glob";
+      includeDeleted?: boolean;
+      type?: string;
+      limit?: number;
+    },
+  ): Promise<{
+    sceneId: string;
+    query: string;
+    mode: "contains" | "glob";
+    count: number;
+    matches: Array<{ element: any; matchedFields: string[] }>;
+  }> {
+    const scene = await this.store.load(sceneId);
+    const mode = options.mode ?? "contains";
+    const limit = options.limit && options.limit > 0 ? options.limit : 50;
+    const normalizedQuery = normalizeSearchText(options.query);
+    const glob = mode === "glob" ? globToRegExp(options.query) : null;
+    const matches: Array<{ element: any; matchedFields: string[] }> = [];
+
+    for (const element of scene.elements) {
+      if (!options.includeDeleted && element.isDeleted) {
+        continue;
+      }
+      if (options.type && element.type !== options.type) {
+        continue;
+      }
+
+      const matchedFields: string[] = [];
+      const fields = getElementSearchFields(element);
+      for (const [field, value] of Object.entries(fields)) {
+        if (!value) {
+          continue;
+        }
+        const matched = glob
+          ? glob.test(value)
+          : normalizeSearchText(value).includes(normalizedQuery);
+        if (matched) {
+          matchedFields.push(field);
+        }
+      }
+
+      if (matchedFields.length > 0) {
+        matches.push({ element, matchedFields });
+      }
+      if (matches.length >= limit) {
+        break;
+      }
+    }
+
+    return {
+      sceneId,
+      query: options.query,
+      mode,
+      count: matches.length,
+      matches,
+    };
+  }
+
+  async editSceneContent(
+    sceneId: string,
+    input: {
+      delete?: string[];
+      update?: Array<{ id: string; patch: Record<string, unknown> }>;
+      add?: string | any[];
+    },
+  ): Promise<{
+    scene: SceneEnvelope;
+    changedElementIds: string[];
+    tempIdMap: Record<string, string>;
+    revisionHash: string;
+  }> {
+    const changedElementIds = new Set<string>();
+    const tempIdMap = new Map<string, string>();
+    let latest = await this.store.load(sceneId);
+
+    const record = (ids: string[]) => {
+      for (const id of ids) {
+        changedElementIds.add(id);
+      }
+    };
+
+    if (input.delete && input.delete.length > 0) {
+      const result = await this.patchScene(sceneId, [
+        { op: "deleteElements", elementIds: input.delete },
+      ] as any);
+      latest = result.scene;
+      record(result.changedElementIds);
+    }
+
+    const labelAdds: any[] = [];
+    const updates: Array<{ id: string; patch: Record<string, unknown> }> = [];
+    for (const update of input.update ?? []) {
+      const patch = { ...update.patch } as any;
+      const labelText = extractLabelText(patch.label);
+      delete patch.label;
+
+      if (labelText !== null) {
+        const target = latest.elements.find((element) => element.id === update.id);
+        if (!target) {
+          throw new AppError("NOT_FOUND", `Element not found: ${update.id}`, 404, {
+            elementId: update.id,
+          });
+        }
+        const existingLabel = latest.elements.find(
+          (element) => element.type === "text" && element.containerId === update.id && !element.isDeleted,
+        );
+        if (existingLabel) {
+          updates.push({
+            id: existingLabel.id,
+            patch: { text: labelText, originalText: labelText },
+          });
+        } else {
+          labelAdds.push(createBoundTextSkeleton(target, labelText));
+        }
+      }
+
+      if (Object.keys(patch).length > 0) {
+        updates.push({ id: update.id, patch });
+      }
+    }
+
+    if (updates.length > 0) {
+      const result = await this.patchScene(sceneId, [
+        { op: "updateElements", elements: updates },
+      ] as any);
+      latest = result.scene;
+      record(result.changedElementIds);
+    }
+
+    const addInput = typeof input.add === "string" ? JSON.parse(input.add) : (input.add ?? []);
+    if (!Array.isArray(addInput)) {
+      throw new AppError("BAD_REQUEST", "add must be a JSON array string or array", 400);
+    }
+
+    for (const skeleton of addInput) {
+      if (skeleton?.id) {
+        throw new AppError("BAD_REQUEST", "Added elements must not include persisted id; use tempId for same-request references", 400);
+      }
+      if (typeof skeleton?.tempId === "string" && skeleton.tempId) {
+        tempIdMap.set(skeleton.tempId, uuidv4());
+      }
+    }
+
+    const resolvedAdds = addInput.flatMap((skeleton) => {
+      const withId = {
+        ...skeleton,
+        id: typeof skeleton?.tempId === "string" ? tempIdMap.get(skeleton.tempId) : uuidv4(),
+      };
+      return expandLabeledSkeleton(resolveElementReferences(withId, tempIdMap));
+    });
+
+    const allAdds = [...labelAdds, ...resolvedAdds];
+    if (allAdds.length > 0) {
+      const result = await this.patchScene(sceneId, [
+        { op: "addElements", elements: allAdds },
+      ] as any);
+      latest = result.scene;
+      record(result.changedElementIds);
+
+      const bindingRestores = allAdds
+        .filter((element) => element.type === "arrow" && (element.startBinding || element.endBinding))
+        .map((element) => ({
+          id: element.id,
+          patch: {
+            ...(element.startBinding ? { startBinding: element.startBinding } : {}),
+            ...(element.endBinding ? { endBinding: element.endBinding } : {}),
+          },
+        }));
+      if (bindingRestores.length > 0) {
+        const restored = await this.patchScene(sceneId, [
+          { op: "updateElements", elements: bindingRestores },
+        ] as any);
+        latest = restored.scene;
+        record(restored.changedElementIds);
+      }
+    }
+
+    return {
+      scene: latest,
+      changedElementIds: [...changedElementIds].sort(),
+      tempIdMap: Object.fromEntries(tempIdMap.entries()),
+      revisionHash: latest.metadata.revisionHash,
+    };
   }
 
   async getAppState(sceneId: string): Promise<Record<string, unknown>> {

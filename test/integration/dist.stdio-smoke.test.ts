@@ -12,7 +12,8 @@ async function ensureBuiltDist(): Promise<void> {
   if (
     current?.includes('"nodes_compose"') &&
     current.includes('"layout_swimlanes"') &&
-    current.includes('"layout_polish"')
+    current.includes('"layout_polish"') &&
+    current.includes('"edit_scene_content"')
   ) {
     return;
   }

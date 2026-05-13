@@ -6,6 +6,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SceneService } from "../domain/sceneService.js";
 import type { ExportService } from "../export/exportService.js";
 import type { AccountImporter } from "../account/accountImporter.js";
+import type {
+  ExcalidrawPlusPatchSceneContentRequest,
+  ExcalidrawPlusReplaceSceneContentRequest,
+  ExcalidrawPlusSceneProvider,
+} from "../official/excalidrawPlusApiClient.js";
 import { asAppError } from "../utils/errors.js";
 import {
   exportOptionsSchema,
@@ -118,6 +123,31 @@ const elementSkeletonSchema = z
     fontSize: z.number().optional(),
     textAlign: z.enum(["left", "center", "right"]).optional(),
     verticalAlign: z.enum(["top", "middle", "bottom"]).optional(),
+  })
+  .passthrough();
+
+const officialAddElementSchema = elementSkeletonSchema.omit({ id: true }).extend({
+  tempId: z.string().min(1).optional(),
+  frameId: z.string().nullable().optional(),
+  containerId: z.string().nullable().optional(),
+  startBinding: z.record(z.string(), z.unknown()).optional(),
+  endBinding: z.record(z.string(), z.unknown()).optional(),
+});
+
+const officialUpdateSchema = z.object({
+  id: z.string().min(1),
+  patch: z.record(z.string(), z.unknown()),
+});
+
+const plusSceneContentSchema = z
+  .object({
+    type: z.string().default("excalidraw"),
+    version: z.number().default(2),
+    source: z.string().default("hermes-excalidraw-mcp"),
+    appState: z.record(z.string(), z.unknown()).default({}),
+    elements: z.array(z.record(z.string(), z.unknown())).default([]),
+    files: z.record(z.string(), z.unknown()).default({}),
+    filesFailedToEmbed: z.unknown().optional(),
   })
   .passthrough();
 
@@ -247,6 +277,7 @@ export function registerTools(
   sceneService: SceneService,
   exportService: ExportService,
   accountImporter: AccountImporter,
+  plusProvider: ExcalidrawPlusSceneProvider,
 ): void {
   const readOnlyAnnotations = {
     readOnlyHint: true,
@@ -266,6 +297,165 @@ export function registerTools(
     destructiveHint: true,
     openWorldHint: false,
   };
+
+
+  server.registerTool(
+    "plus_api_status",
+    {
+      description:
+        "Report whether the official Excalidraw+ API adapter is configured. Does not expose API keys or make a network call.",
+      outputSchema: standardOutputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async () => {
+      try {
+        return success(
+          { sourceProvider: "excalidraw-plus", status: plusProvider.status() },
+          "Loaded Excalidraw+ API adapter status",
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "plus_scenes_list",
+    {
+      description:
+        "List scene metadata from the official Excalidraw+ workspace API. Use for remote persistence/discovery, not local authoring quality checks.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(100).optional(),
+        offset: z.number().int().min(0).optional(),
+        collectionId: z.string().min(1).optional(),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (args) => {
+      try {
+        const scenes = await plusProvider.listScenes(args);
+        return success(
+          { sourceProvider: "excalidraw-plus", scenes },
+          `Listed ${scenes.data.length} Excalidraw+ scenes`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "plus_scene_content_get",
+    {
+      description:
+        "Fetch full scene content from the official Excalidraw+ API. Returns the canonical remote scene-content payload.",
+      inputSchema: {
+        sceneId: z.string().min(1),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async ({ sceneId }) => {
+      try {
+        const content = await plusProvider.getSceneContent(sceneId);
+        return success(
+          { sceneId, sourceProvider: "excalidraw-plus", content },
+          `Loaded Excalidraw+ scene content for ${sceneId}`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "plus_scene_create",
+    {
+      description:
+        "Create an empty scene record in the official Excalidraw+ workspace API. Follow with plus_scene_content_patch or plus_scene_content_replace to write content.",
+      inputSchema: {
+        name: z.string().min(1).max(256),
+        pinned: z.boolean().optional(),
+        collectionId: z.string().min(1).optional(),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: mutatingAnnotations,
+    },
+    async ({ name, pinned, collectionId }) => {
+      try {
+        const scene = await plusProvider.createScene({ name, pinned, collectionId });
+        return success(
+          { sourceProvider: "excalidraw-plus", scene },
+          `Created Excalidraw+ scene ${name}`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "plus_scene_content_patch",
+    {
+      description:
+        "Merge scene-content changes into an official Excalidraw+ scene. Prefer this for incremental remote edits; elements merge by id and omitted elements are preserved.",
+      inputSchema: {
+        sceneId: z.string().min(1),
+        elements: z.array(z.record(z.string(), z.unknown())).optional(),
+        appState: z.record(z.string(), z.unknown()).optional(),
+        files: z.record(z.string(), z.unknown()).optional(),
+        filesFailedToEmbed: z.unknown().optional(),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: mutatingAnnotations,
+    },
+    async ({ sceneId, elements, appState, files, filesFailedToEmbed }) => {
+      try {
+        const patch: ExcalidrawPlusPatchSceneContentRequest = {
+          elements,
+          appState,
+          files,
+          filesFailedToEmbed,
+        };
+        const content = await plusProvider.patchSceneContent(sceneId, patch);
+        return success(
+          { sceneId, sourceProvider: "excalidraw-plus", content },
+          `Patched Excalidraw+ scene content for ${sceneId}`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "plus_scene_content_replace",
+    {
+      description:
+        "DESTRUCTIVE: fully replace official Excalidraw+ scene content. Elements omitted from content are removed and connected editors may reload. Use only for authoritative whole-scene generation/restore.",
+      inputSchema: {
+        sceneId: z.string().min(1),
+        content: plusSceneContentSchema,
+      },
+      outputSchema: standardOutputSchema,
+      annotations: destructiveAnnotations,
+    },
+    async ({ sceneId, content }) => {
+      try {
+        const replaced = await plusProvider.replaceSceneContent(
+          sceneId,
+          content as ExcalidrawPlusReplaceSceneContentRequest,
+        );
+        return success(
+          { sceneId, sourceProvider: "excalidraw-plus", content: replaced },
+          `Replaced Excalidraw+ scene content for ${sceneId}`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
 
   server.registerTool(
     "scene_create",
@@ -387,6 +577,149 @@ export function registerTools(
         );
         const scene = await sceneService.getScene(resolvedId);
         return success({ scene }, `Loaded scene ${resolvedId}`);
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "read_excalidraw_format",
+    {
+      description:
+        "Official-compatible helper: describe the Excalidraw scene-content JSON shape, add/update/delete semantics, tempId references, and label expansion supported by this local server.",
+      outputSchema: standardOutputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async () => {
+      try {
+        return success(
+          {
+            format: {
+              elements: "Array of Excalidraw element-like skeletons. Use tempId, not id, for newly-added elements that must be referenced by other newly-added elements.",
+              appState: "Plain Excalidraw appState object stored with the scene.",
+              files: "Record of fileId to binary metadata payloads.",
+            },
+            editSemantics: {
+              order: ["delete", "update", "add"],
+              add: "Added elements must not include persisted id; use optional tempId. tempId references are resolved in frameId/containerId/startBinding.elementId/endBinding.elementId.",
+              update: "Update entries are { id, patch }. A patch.label object creates or updates bound text.",
+              search: "search_scene_content supports contains and glob. contains is case- and separator-insensitive.",
+            },
+            references: [
+              "https://plus.excalidraw.com/docs/mcp/tools",
+              "https://plus.excalidraw.com/docs/api/scene-content-schema",
+              "https://docs.excalidraw.com/docs",
+            ],
+          },
+          "Loaded official-compatible Excalidraw format guidance",
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_scene_content",
+    {
+      description:
+        "Official-compatible alias for reading scene content: returns elements, appState, files, metadata, and sourceProvider=local.",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async ({ sceneId }, extra) => {
+      try {
+        const resolvedId = await resolveSceneId(
+          sceneService,
+          getSessionId(extra),
+          sceneId,
+        );
+        const scene = await sceneService.getScene(resolvedId);
+        return success(
+          {
+            sceneId: resolvedId,
+            sourceProvider: "local",
+            elements: scene.elements,
+            appState: scene.appState,
+            files: scene.files,
+            metadata: scene.metadata,
+          },
+          `Loaded official-compatible scene content for ${resolvedId}`,
+        );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "search_scene_content",
+    {
+      description:
+        "Official-compatible search over local scene content. Use before edits to find exact element IDs without loading or reasoning over the entire scene.",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+        query: z.string().min(1),
+        mode: z.enum(["contains", "glob"]).optional(),
+        includeDeleted: z.boolean().optional(),
+        type: elementTypeSchema.optional(),
+        limit: z.number().int().positive().optional(),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async ({ sceneId, query, mode, includeDeleted, type, limit }, extra) => {
+      try {
+        const resolvedId = await resolveSceneId(
+          sceneService,
+          getSessionId(extra),
+          sceneId,
+        );
+        const result = await sceneService.searchSceneContent(resolvedId, {
+          query,
+          mode,
+          includeDeleted,
+          type,
+          limit,
+        });
+        return success(result as any, `Found ${result.count} matches in ${resolvedId}`);
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "edit_scene_content",
+    {
+      description:
+        "Official-compatible local scene edit tool. Applies delete, then update, then add. Supports add as a JSON string or array, tempId reference resolution, and label expansion.",
+      inputSchema: {
+        sceneId: sceneIdSchema.optional(),
+        delete: z.array(z.string().min(1)).optional(),
+        update: z.array(officialUpdateSchema).optional(),
+        add: z.union([z.string(), z.array(officialAddElementSchema)]).optional(),
+      },
+      outputSchema: standardOutputSchema,
+      annotations: mutatingAnnotations,
+    },
+    async ({ sceneId, delete: deleteIds, update, add }, extra) => {
+      try {
+        const resolvedId = await resolveSceneId(
+          sceneService,
+          getSessionId(extra),
+          sceneId,
+        );
+        const result = await sceneService.editSceneContent(resolvedId, {
+          delete: deleteIds,
+          update: update as any,
+          add: add as any,
+        });
+        return success(result as any, `Edited official-compatible scene content for ${resolvedId}`);
       } catch (error) {
         return failure(error);
       }

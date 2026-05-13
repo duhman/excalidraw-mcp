@@ -518,4 +518,100 @@ describe("SceneService", () => {
     const validation = await service.validateScene("connector-label-fit-scene");
     expect(validation.qualityIssues.some((issue) => issue.code === "TEXT_OVERFLOW")).toBe(false);
   });
+
+  it("searches scene content using official separator-insensitive contains semantics", async () => {
+    await service.createScene({
+      sceneId: "search-content-scene",
+      elements: [
+        { id: "title", type: "text", x: 0, y: 0, width: 240, height: 32, text: "Auth Flow", originalText: "Auth Flow" },
+        { id: "api-box", type: "rectangle", x: 0, y: 80, width: 180, height: 80, customData: { semanticRole: "API Gateway" } },
+      ],
+    });
+
+    const results = await service.searchSceneContent("search-content-scene", {
+      query: "auth_flow",
+      mode: "contains",
+    });
+
+    expect(results.matches.map((match) => match.element.id)).toEqual(["title"]);
+    expect(results.matches[0].matchedFields).toContain("text");
+  });
+
+  it("updates existing bound labels through official label patch semantics", async () => {
+    await service.createScene({
+      sceneId: "edit-existing-label-scene",
+      elements: [
+        {
+          id: "existing",
+          type: "rectangle",
+          x: 0,
+          y: 0,
+          width: 160,
+          height: 80,
+          boundElements: [{ id: "existing-label", type: "text" }],
+        },
+        {
+          id: "existing-label",
+          type: "text",
+          x: 16,
+          y: 24,
+          width: 128,
+          height: 24,
+          text: "Old label",
+          originalText: "Old label",
+          containerId: "existing",
+        },
+      ],
+    });
+
+    const result = await service.editSceneContent("edit-existing-label-scene", {
+      update: [
+        { id: "existing", patch: { label: { text: "Updated label" } } },
+      ],
+    });
+
+    const label = result.scene.elements.find((element: any) => element.id === "existing-label");
+    expect(label?.text.replace(/\s+/g, " ")).toBe("Updated label");
+    expect(label?.originalText.replace(/\s+/g, " ")).toBe("Updated label");
+    expect(result.changedElementIds).toContain("existing-label");
+  });
+
+  it("edits scene content with official tempId, label, and operation-order semantics", async () => {
+    await service.createScene({
+      sceneId: "edit-content-scene",
+      elements: [
+        { id: "old", type: "rectangle", x: -300, y: 0, width: 100, height: 60 },
+        { id: "existing", type: "rectangle", x: 400, y: 0, width: 140, height: 80 },
+      ],
+    });
+
+    const result = await service.editSceneContent("edit-content-scene", {
+      delete: ["old"],
+      update: [
+        { id: "existing", patch: { label: { text: "Existing label" } } },
+      ],
+      add: JSON.stringify([
+        { tempId: "frame-a", type: "frame", x: 0, y: 0, width: 854, height: 480, name: "Slide 1" },
+        { tempId: "shape-a", type: "rectangle", frameId: "frame-a", x: 64, y: 96, width: 180, height: 90, label: { text: "New card" } },
+        { type: "arrow", frameId: "frame-a", x: 244, y: 141, width: 156, height: -101, startBinding: { elementId: "shape-a", fixedPoint: [1, 0.5] }, endBinding: { elementId: "existing", fixedPoint: [0, 0.5] } },
+      ]),
+    });
+
+    const scene = result.scene;
+    expect(scene.elements.some((element: any) => element.id === "old" && element.isDeleted)).toBe(true);
+    expect(result.tempIdMap["frame-a"]).toBeTruthy();
+    expect(result.tempIdMap["shape-a"]).toBeTruthy();
+
+    const newShape = scene.elements.find((element: any) => element.id === result.tempIdMap["shape-a"]);
+    const newLabel = scene.elements.find((element: any) => element.type === "text" && element.containerId === newShape?.id);
+    const existingLabel = scene.elements.find((element: any) => element.type === "text" && element.containerId === "existing");
+    const arrow = scene.elements.find((element: any) => element.type === "arrow");
+
+    expect(newShape?.frameId).toBe(result.tempIdMap["frame-a"]);
+    expect(newLabel?.text).toBe("New card");
+    expect(existingLabel?.text.replace(/\s+/g, " ")).toBe("Existing label");
+    expect(arrow?.frameId).toBe(result.tempIdMap["frame-a"]);
+    expect(arrow?.startBinding?.elementId).toBe(newShape?.id);
+    expect(arrow?.endBinding?.elementId).toBe("existing");
+  });
 });
